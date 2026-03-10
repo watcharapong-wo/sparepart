@@ -13,6 +13,13 @@ document.getElementById("movement-type")?.addEventListener("change", function() 
     }
 });
 
+let allMovements = [];
+
+document.getElementById("movement-search")?.addEventListener("input", function() {
+    const searchTerm = this.value.toLowerCase();
+    filterMovements(searchTerm);
+});
+
 function formatDate(isoString) {
   if (!isoString) return "-";
   const d = new Date(isoString);

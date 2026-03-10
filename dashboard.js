@@ -36,13 +36,14 @@ async function loadDashboard() {
   try {
     console.log("Loading dashboard data...");
     // Parallel Fetching
-    const [stockValueResp, lowStock, movements, warehouseValue, trends, monthlyData] = await Promise.all([
+    const [stockValueResp, lowStock, movements, warehouseValue, trends, monthlyData, expensesByWarehouse] = await Promise.all([
       fetchData("/report/value", token),
       fetchData("/report/low-stock", token),
       fetchData("/report/movements3", token),
       fetchData("/report/value-by-warehouse", token),
       fetchData("/report/movement-trends", token),
-      fetchData("/report/monthly-comparison", token)
+      fetchData("/report/monthly-comparison", token),
+      fetchData("/report/expense-by-warehouse", token)
     ]);
 
     // Update Stats
@@ -75,14 +76,14 @@ async function loadDashboard() {
       if (monthlyData) renderMonthlyChart(monthlyData);
       if (warehouseValue) renderWarehouseChart(warehouseValue);
 
-      // Populate Specific Warehouse Values
-      const lpn1 = warehouseValue.find(w => w.warehouse_name === 'LPN1');
-      const lpn2 = warehouseValue.find(w => w.warehouse_name === 'LPN2');
+      // Populate Specific Warehouse Expenses
+      const lpn1 = expensesByWarehouse.find(w => w.warehouse_name === 'LPN1');
+      const lpn2 = expensesByWarehouse.find(w => w.warehouse_name === 'LPN2');
       
       const el1 = document.getElementById("lpn1-value");
       const el2 = document.getElementById("lpn2-value");
-      if (el1) el1.innerText = (lpn1?.total_value || 0).toLocaleString();
-      if (el2) el2.innerText = (lpn2?.total_value || 0).toLocaleString();
+      if (el1) el1.innerText = (lpn1?.total_expense || 0).toLocaleString();
+      if (el2) el2.innerText = (lpn2?.total_expense || 0).toLocaleString();
     }
   } catch (err) {
     console.error("Dashboard error:", err);

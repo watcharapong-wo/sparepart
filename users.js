@@ -125,7 +125,8 @@ async function loadUsers() {
         <td>${user.id}</td>
         <td>${user.username}</td>
         <td><span class="badge badge-${user.role}">${user.role}</span></td>
-        <td>
+        <td class="actions-cell">
+          <button class="btn btn-sm" style="background-color: #3b82f6; color: white;" onclick="resetPassword(${user.id})">Reset</button>
           <button class="btn btn-danger btn-sm" onclick="deleteUser(${user.id})" data-i18n="delete">Delete</button>
         </td>
       `;
@@ -154,6 +155,33 @@ async function deleteUser(id) {
   }
 }
 
+async function resetPassword(id) {
+  const newPassword = prompt("Enter new password for this user:");
+  if (!newPassword) return;
+
+  const token = localStorage.getItem("token");
+  try {
+    const res = await fetch(`${window.API_URL}/users/${id}/reset-password`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token,
+      },
+      body: JSON.stringify({ password: newPassword }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast("Password reset successfully!", "success");
+    } else {
+      showToast("Error: " + (data.error || "Failed to reset password"), "error");
+    }
+  } catch (err) {
+    console.error(err);
+    showToast("System Error", "error");
+  }
+}
+
 // Ensure functions are global
 window.deleteUser = deleteUser;
 window.deleteReason = deleteReason;
+window.resetPassword = resetPassword;

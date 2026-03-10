@@ -205,6 +205,28 @@ app.get("/users", authenticateToken, requireRole(["admin"]), (req, res) => {
   });
 });
 
+// API Reset User Password (Admin only)
+app.put("/users/:id/reset-password", authenticateToken, requireRole(["admin"]), (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body;
+
+  if (!password) return res.status(400).json({ error: "PASSWORD_REQUIRED" });
+
+  bcrypt.hash(password, 10, (err, hashedPassword) => {
+    if (err) return res.status(500).json({ error: err.message });
+
+    db.run(
+      "UPDATE users SET password = ? WHERE id = ?",
+      [hashedPassword, id],
+      function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        if (this.changes === 0) return res.status(404).json({ error: "USER_NOT_FOUND" });
+        res.json({ message: "Password reset successfully!" });
+      }
+    );
+  });
+});
+
 // API Delete User (Admin only)
 app.delete("/users/:id", authenticateToken, requireRole(["admin"]), (req, res) => {
   const { id } = req.params;
@@ -284,6 +306,7 @@ app.get("/report/movements3", authenticateToken, requireRole(["admin", "co-admin
       m.movement_date,
       m.movement_type,
       m.quantity,
+      m.due_date,
       m.note,
       m.department,
       m.receiver,
@@ -327,6 +350,22 @@ app.get("/report/value-by-warehouse", authenticateToken, (req, res) => {
     SELECT w.name AS warehouse_name, SUM(p.quantity * p.price) AS total_value
     FROM spare_parts p
     JOIN warehouses w ON p.warehouseId = w.id
+    GROUP BY w.name
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+// [NEW] รายงานค่าใช้จ่ายแยกตามคลังสินค้า (รายการเบิกออก OUT)
+app.get("/report/expense-by-warehouse", authenticateToken, (req, res) => {
+  const sql = `
+    SELECT w.name AS warehouse_name, SUM(m.quantity * p.price) AS total_expense
+    FROM stock_movements m
+    JOIN spare_parts p ON m.part_id = p.id
+    JOIN warehouses w ON p.warehouseId = w.id
+    WHERE m.movement_type = 'OUT'
     GROUP BY w.name
   `;
   db.all(sql, [], (err, rows) => {
