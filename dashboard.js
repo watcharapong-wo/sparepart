@@ -22,7 +22,9 @@ async function loadDashboard() {
 
   // Update Welcome Section
   const welcomeMsg = document.getElementById("welcome-message");
-  if (welcomeMsg) welcomeMsg.innerText = `Welcome, ${username}!`;
+  const icons = ["👋", "✨", "🌟", "😊", "🚀", "💻", "🛠️"];
+  const randomIcon = icons[Math.floor(Math.random() * icons.length)];
+  if (welcomeMsg) welcomeMsg.innerText = `Welcome, ${username} ${randomIcon}`;
   
   const dateEl = document.getElementById("current-date");
   if (dateEl) {
