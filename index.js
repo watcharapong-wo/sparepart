@@ -13,6 +13,13 @@ const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 app.use(cors());
 app.use(express.json());
 
+// --- Static File Serving ---
+app.use(express.static("."));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+// ---------------------------
+
 // Log all requests
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
