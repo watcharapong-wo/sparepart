@@ -71,11 +71,12 @@ body.login-page {
   color: white;
 }
 
-.login-container h2 {
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 24px;
+.login-container h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 32px;
   color: white;
+  letter-spacing: -0.5px;
 }
 
 .login-container form {
@@ -84,11 +85,23 @@ body.login-page {
   gap: 16px;
 }
 
-.login-logo {
-  max-width: 120px;
-  height: auto;
-  margin: 0 auto 16px auto;
-  display: block;
+.logo-wrapper {
+  background: white;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px auto;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.logo-text {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: 1px;
 }
 
 .login-container input {
