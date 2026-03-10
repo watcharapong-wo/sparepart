@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Movements - it Spare part System</title>
+  <link rel="stylesheet" href="styles.css?v=1.1">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-brand">it Spare part System <span>- Stock Movements</span></div>
+    <div class="nav-links">
+      <a href="dashboard.html" data-i18n="dashboard">Dashboard</a>
+      <a href="movements.html" class="active" data-i18n="movements">Movements</a>
+      <a href="index.html" data-role-required="admin,co-admin" data-i18n="spareParts">Spare Parts</a>
+      <a href="users.html" id="nav-users" data-role-required="admin" data-i18n="manageUsers">Manage Users</a>
+      <span id="user-status"></span>
+      <a href="#" id="logout-btn" data-i18n="logout">Logout</a>
+    </div>
+  </nav>
+
+  <div class="movements-container">
+    <div class="top-actions" style="display: flex; justify-content: space-between; align-items: center;">
+      <div data-role-required="admin,co-admin,staff">
+        <button class="btn btn-success" onclick="setMovementType('IN')">Stock IN</button>
+        <button class="btn btn-danger" onclick="setMovementType('OUT')">Stock OUT</button>
+        <button class="btn" onclick="setMovementType('BORROW')" style="background-color: #f59e0b;">Borrow</button>
+        <button class="btn" onclick="setMovementType('RETURN')" style="background-color: #3b82f6;">Return</button>
+      </div>
+      <button id="export-movements" class="btn btn-success" data-i18n="exportCSV">Export CSV</button>
+    </div>
+
+    <div class="movements-grid">
+      <!-- Left side: Form -->
+      <div class="card" data-role-required="admin,co-admin,staff">
+        <div class="card-title" data-i18n="recordMovement">Record Stock Movement</div>
+        <form id="movement-form" class="form-grid">
+          <div class="stacked-form-group">
+            <label data-i18n="part">Part:</label>
+            <select id="part-select" required></select>
+          </div>
+          <div class="stacked-form-group">
+            <label data-i18n="movementType">Movement Type:</label>
+            <select id="movement-type" required>
+              <option value="IN" data-i18n="stockIn">IN</option>
+              <option value="OUT" data-i18n="stockOut">OUT</option>
+              <option value="BORROW" data-i18n="borrow">BORROW</option>
+              <option value="RETURN" data-i18n="return">RETURN</option>
+            </select>
+          </div>
+          <div class="stacked-form-group">
+            <label data-i18n="qty">Quantity:</label>
+            <input type="number" id="quantity" required>
+          </div>
+          <div class="stacked-form-group">
+            <label data-i18n="warehouseLabel">Warehouse:</label>
+            <select id="reason-select" required>
+            </select>
+          </div>
+          <div class="stacked-form-group" id="due-date-group" style="display: none;">
+            <label data-i18n="dueDate">Due Date:</label>
+            <input type="date" id="due-date">
+          </div>
+          <div class="stacked-form-group">
+            <label data-i18n="receiver">Receiver:</label>
+            <input type="text" id="receiver" required>
+          </div>
+          <div class="stacked-form-group">
+            <label data-i18n="receiptNumber">Receipt Number:</label>
+            <input type="text" id="receipt-number" required>
+          </div>
+          <div class="stacked-form-group" style="grid-column: span 2;">
+            <label data-i18n="note">Note:</label>
+            <input type="text" id="note">
+          </div>
+          <div class="form-actions" style="grid-column: 1 / -1; margin-top: 8px;">
+            <button type="submit" class="btn btn-primary" data-i18n="submit">Submit</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Right side: Low Stock Items -->
+      <div class="card">
+        <div class="card-title">Low Stock Items</div>
+        <table id="low-stock-table">
+          <tbody>
+            <!-- Data dynamically inserted -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Bottom: Recent Movements -->
+    <div class="card" style="margin-top: 24px;">
+      <div class="card-title" data-i18n="recentMovements">Recent Movements</div>
+      <table id="movements-table">
+        <thead>
+          <tr>
+            <th data-i18n="date">Date</th>
+            <th data-i18n="type">Type</th>
+            <th data-i18n="part">Part</th>
+            <th data-i18n="qty">Qty</th>
+            <th data-i18n="warehouseHeader">Warehouse</th>
+            <th data-i18n="receiver">Receiver</th>
+            <th data-i18n="note">Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Data statically inserted from JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="i18n.js?v=1.1"></script>
+  <script src="api.js?v=1.1"></script>
+  <script src="movements.js?v=1.1"></script>
+</body>
+</html>
