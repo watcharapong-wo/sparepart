@@ -92,7 +92,12 @@
 
     <!-- Bottom: Recent Movements -->
     <div class="card" style="margin-top: 24px;">
-      <div class="card-title" data-i18n="recentMovements">Recent Movements</div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div class="card-title" style="margin: 0;" data-i18n="recentMovements">Recent Movements</div>
+        <div class="search-container">
+          <input type="text" id="movement-search" placeholder="Search Part Name / No..." data-i18n="searchPlaceholder">
+        </div>
+      </div>
       <table id="movements-table">
         <thead>
           <tr>
@@ -101,6 +106,7 @@
             <th data-i18n="part">Part</th>
             <th data-i18n="qty">Qty</th>
             <th data-i18n="warehouseHeader">Warehouse</th>
+            <th data-i18n="dueDate">Due Date</th>
             <th data-i18n="receiver">Receiver</th>
             <th data-i18n="note">Note</th>
           </tr>

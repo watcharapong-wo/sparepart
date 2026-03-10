@@ -91,12 +91,22 @@ async function loadLowStock() {
 async function loadMovements() {
   try {
     const token = localStorage.getItem("token");
-    const tbody = document.getElementById("movements-table").getElementsByTagName("tbody")[0];
+    const tbody = document.getElementById("movements-table")?.getElementsByTagName("tbody")[0];
     if (!tbody) return;
     tbody.innerHTML = `<tr><td colspan="8" class="table-loading-state"><div class="spinner"></div>Loading history...</td></tr>`;
 
-    const data = await fetchData("/report/movements3", token);
+    allMovements = await fetchData("/report/movements3", token);
+    displayMovements(allMovements);
+  } catch (err) {
+    console.error("Failed to load movements", err);
+  }
+}
+
+function displayMovements(data) {
+    const tbody = document.getElementById("movements-table")?.getElementsByTagName("tbody")[0];
+    if (!tbody) return;
     tbody.innerHTML = "";
+
     if (Array.isArray(data) && data.length > 0) {
       data.forEach(m => {
         const row = tbody.insertRow();
@@ -110,13 +120,22 @@ async function loadMovements() {
         row.insertCell(2).textContent = m.part_name || m.part_no;
         row.insertCell(3).textContent = m.quantity;
         row.insertCell(4).textContent = m.department || "-";
-        row.insertCell(5).textContent = m.receiver || "-";
-        row.insertCell(6).textContent = m.note || "-";
+        row.insertCell(5).textContent = formatDate(m.due_date);
+        row.insertCell(6).textContent = m.receiver || "-";
+        row.insertCell(7).textContent = m.note || "-";
       });
+    } else {
+        tbody.innerHTML = `<tr><td colspan="8" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>No results found.</p></td></tr>`;
     }
-  } catch (err) {
-    console.error("Failed to load movements", err);
-  }
+}
+
+function filterMovements(term) {
+    const filtered = allMovements.filter(m => {
+        const name = (m.part_name || "").toLowerCase();
+        const no = (m.part_no || "").toLowerCase();
+        return name.includes(term) || no.includes(term);
+    });
+    displayMovements(filtered);
 }
 
 document.getElementById("movement-form").addEventListener("submit", async function (e) {
@@ -193,6 +212,7 @@ if (exportBtn) {
           'Part Name': item.part_name || item.part_no,
           'Quantity': item.quantity,
           'Category/Dept': item.department || "-",
+          'Due Date': formatDate(item.due_date),
           'Receiver': item.receiver || "-",
           'Note': item.note || "-"
         }));
