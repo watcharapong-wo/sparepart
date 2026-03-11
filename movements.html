@@ -14,6 +14,7 @@
       <a href="movements.html" class="active" data-i18n="movements">Movements</a>
       <a href="index.html" data-role-required="admin,co-admin" data-i18n="spareParts">Spare Parts</a>
       <a href="users.html" id="nav-users" data-role-required="admin" data-i18n="manageUsers">Manage Users</a>
+      <a href="logs.html" data-role-required="admin" data-i18n="activityLogs">Activity Logs</a>
       <span id="user-status"></span>
       <a href="#" id="logout-btn" data-i18n="logout">Logout</a>
     </div>
@@ -22,7 +23,7 @@
   <div class="movements-container">
     <div class="top-actions" style="display: flex; justify-content: space-between; align-items: center;">
       <div data-role-required="admin,co-admin,staff">
-        <button class="btn btn-success" onclick="setMovementType('IN')">Stock IN</button>
+        <button class="btn btn-success" onclick="setMovementType('IN')" data-role-required="admin,co-admin">Stock IN</button>
         <button class="btn btn-danger" onclick="setMovementType('OUT')">Stock OUT</button>
         <button class="btn" onclick="setMovementType('BORROW')" style="background-color: #f59e0b;">Borrow</button>
         <button class="btn" onclick="setMovementType('RETURN')" style="background-color: #3b82f6;">Return</button>
@@ -36,17 +37,21 @@
         <div class="card-title" data-i18n="recordMovement">Record Stock Movement</div>
         <form id="movement-form" class="form-grid">
           <div class="stacked-form-group">
-            <label data-i18n="part">Part:</label>
-            <select id="part-select" required></select>
-          </div>
-          <div class="stacked-form-group">
             <label data-i18n="movementType">Movement Type:</label>
             <select id="movement-type" required>
-              <option value="IN" data-i18n="stockIn">IN</option>
+              <option value="IN" data-i18n="stockIn" data-role-required="admin,co-admin">IN</option>
               <option value="OUT" data-i18n="stockOut">OUT</option>
               <option value="BORROW" data-i18n="borrow">BORROW</option>
               <option value="RETURN" data-i18n="return">RETURN</option>
             </select>
+          </div>
+          <div class="stacked-form-group">
+            <label data-i18n="part">Part:</label>
+            <select id="part-select" required></select>
+          </div>
+          <div class="stacked-form-group">
+            <label data-i18n="partNo">Spare Part No:</label>
+            <input type="text" id="sparepart-no" readonly style="background-color: #f3f4f6;">
           </div>
           <div class="stacked-form-group">
             <label data-i18n="qty">Quantity:</label>
@@ -66,7 +71,7 @@
             <input type="text" id="receiver" required>
           </div>
           <div class="stacked-form-group">
-            <label data-i18n="receiptNumber">Receipt Number:</label>
+            <label data-i18n="receiptNumber">Request Number:</label>
             <input type="text" id="receipt-number" required>
           </div>
           <div class="stacked-form-group" style="grid-column: span 2;">
@@ -103,11 +108,13 @@
           <tr>
             <th data-i18n="date">Date</th>
             <th data-i18n="type">Type</th>
-            <th data-i18n="part">Part</th>
+            <th data-i18n="partNo">Part No</th>
+            <th data-i18n="part">Part Name</th>
             <th data-i18n="qty">Qty</th>
             <th data-i18n="warehouseHeader">Warehouse</th>
             <th data-i18n="dueDate">Due Date</th>
             <th data-i18n="receiver">Receiver</th>
+            <th data-i18n="receiptNumber">Request Number</th>
             <th data-i18n="note">Note</th>
           </tr>
         </thead>

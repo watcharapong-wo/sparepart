@@ -108,6 +108,25 @@ db.run(
   )`
 );
 
+db.run(
+  `CREATE TABLE IF NOT EXISTS activity_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    action TEXT NOT NULL,
+    details TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`
+);
+
+// Helper function to log activity
+function logActivity(userId, action, details) {
+  const sql = "INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)";
+  db.run(sql, [userId, action, details || null], (err) => {
+    if (err) console.error("Logging error:", err.message);
+  });
+}
+
 // Middleware ตรวจ token และ role
 
 // Seed Data function
@@ -172,6 +191,7 @@ app.post("/register", authenticateToken, requireRole(["admin"]), (req, res) => {
       [username, hashedPassword, role],
       function (err) {
         if (err) return res.status(500).json({ error: err.message });
+        logActivity(req.user.userId, "REGISTER_USER", `Registered new user: ${username} with role: ${role}`);
         res.status(201).json({ message: "User registered successfully!" });
       }
     );
@@ -192,6 +212,7 @@ app.post("/login", (req, res) => {
       if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
 
       const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: "10h" });
+      logActivity(user.id, "LOGIN", `User ${user.username} logged in`);
       res.json({ token, role: user.role });
     });
   });
@@ -299,6 +320,23 @@ app.get("/report/movements2", authenticateToken, requireRole(["admin", "co-admin
 });
 
 // รายงานประวัติการเคลื่อนไหวของสต็อก (movements3)
+app.get("/report/activity-logs", authenticateToken, requireRole(["admin"]), (req, res) => {
+  const sql = `
+    SELECT 
+      l.*, 
+      u.username,
+      u.role
+    FROM activity_logs l
+    LEFT JOIN users u ON u.id = l.user_id
+    ORDER BY l.timestamp DESC
+    LIMIT 500
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
 app.get("/report/movements3", authenticateToken, requireRole(["admin", "co-admin", "staff", "viewer"]), (req, res) => {
   const sql = `
     SELECT 
@@ -453,6 +491,7 @@ app.post(
       [String(part_no), String(name), description, quantity, price, warehouseId],
       function (err) {
         if (err) return res.status(500).json({ error: err.message });
+        logActivity(req.user.userId, "CREATE_PART", `Created part: ${part_no} - ${name} with quantity: ${quantity}`);
         res.status(201).json({ id: this.lastID });
       }
     );
@@ -508,7 +547,7 @@ app.put("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin"])
       return res.status(500).json({ error: err.message });
     }
     console.log(`Update success for ID ${id}, changes: ${this.changes}`);
-    // If changes === 0, it might just mean the data was identical. We return 200 anyway for better UX.
+    logActivity(req.user.userId, "UPDATE_PART", `Updated part ID ${id}: ${part_no || 'N/A'} - ${name || 'N/A'}`);
     res.json({ message: "Updated successfully", id, changes: this.changes });
   });
 });
@@ -520,6 +559,7 @@ app.delete("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin
   db.run("DELETE FROM spare_parts WHERE id = ?", [id], function (err) {
     if (err) return res.status(500).json({ error: err.message });
     if (this.changes === 0) return res.status(404).json({ error: "Spare part not found" });
+    logActivity(req.user.userId, "DELETE_PART", `Deleted part ID ${id}`);
     res.json({ message: "Spare part deleted successfully", id });
   });
 });
@@ -595,6 +635,13 @@ app.post(
     if (!part_id || !movement_type || !validTypes.includes(movement_type) || !Number.isInteger(quantity)) {
       return res.status(400).json({ error: "BAD_REQUEST" });
     }
+
+    // Role check for "IN" movement (Only admin/co-admin)
+    if (movement_type === "IN") {
+      if (!["admin", "co-admin"].includes(req.user.role)) {
+        return res.status(403).json({ error: "FORBIDDEN_ACTION_FOR_ROLE" });
+      }
+    }
  
     // BORROW and RETURN behave like OUT/IN but with specific tracking. 
     // We require receiver details for non-"IN" movements for better audit trails.
@@ -630,7 +677,10 @@ app.post(
             db.run("UPDATE spare_parts SET quantity = ? WHERE id = ?", [newQty, part_id], (err3) => {
               if (err3) return db.run("ROLLBACK", () => res.status(500).json({ error: err3.message }));
 
-              db.run("COMMIT", () => res.status(201).json({ message: "OK", movement_id: this.lastID, newQty }));
+              db.run("COMMIT", () => {
+                logActivity(req.user.userId, "STOCK_MOVEMENT", `${movement_type}: ${quantity} units for part ID ${part_id}. Receiver: ${rec}, Request: ${rn}`);
+                res.status(201).json({ message: "OK", movement_id: this.lastID, newQty });
+              });
             });
           }
         );

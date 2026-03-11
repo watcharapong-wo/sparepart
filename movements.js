@@ -1,16 +1,30 @@
 function setMovementType(type) {
+  const form = document.getElementById("movement-form");
   const el = document.getElementById("movement-type");
-  if (el) {
-    el.value = type;
-    el.dispatchEvent(new Event("change")); // Trigger UI updates
+  if (form && el) {
+    form.reset(); // Reset all fields
+    el.value = type; // Restore the desired type
+    el.dispatchEvent(new Event("change")); // Trigger UI updates (like Due Date visibility)
   }
 }
 
 document.getElementById("movement-type")?.addEventListener("change", function() {
     const dueDateGroup = document.getElementById("due-date-group");
+    const dueDateInput = document.getElementById("due-date");
     if (dueDateGroup) {
-      dueDateGroup.style.display = this.value === "BORROW" ? "flex" : "none";
+      const isBorrow = this.value === "BORROW";
+      dueDateGroup.style.display = isBorrow ? "flex" : "none";
+      if (!isBorrow && dueDateInput) {
+        dueDateInput.value = ""; // Clear value when switching away from BORROW
+      }
     }
+});
+
+document.getElementById("part-select")?.addEventListener("change", function() {
+    const selectedPart = this.options[this.selectedIndex].textContent;
+    const partNo = selectedPart.split(" - ")[0];
+    const sparepartNoInput = document.getElementById("sparepart-no");
+    if (sparepartNoInput) sparepartNoInput.value = partNo;
 });
 
 let allMovements = [];
@@ -124,15 +138,17 @@ function displayMovements(data) {
                           m.movement_type === 'BORROW' ? 'text-warning' :
                           m.movement_type === 'RETURN' ? 'text-info' : 'text-primary';
         typeCell.innerHTML = `<span class="${typeClass}">${m.movement_type}</span>`;
-        row.insertCell(2).textContent = m.part_name || m.part_no;
-        row.insertCell(3).textContent = m.quantity;
-        row.insertCell(4).textContent = m.department || "-";
-        row.insertCell(5).textContent = formatDate(m.due_date);
-        row.insertCell(6).textContent = m.receiver || "-";
-        row.insertCell(7).textContent = m.note || "-";
+        row.insertCell(2).textContent = m.part_no || "-";
+        row.insertCell(3).textContent = m.part_name || "-";
+        row.insertCell(4).textContent = m.quantity;
+        row.insertCell(5).textContent = m.department || "-";
+        row.insertCell(6).textContent = formatDate(m.due_date);
+        row.insertCell(7).textContent = m.receiver || "-";
+        row.insertCell(8).textContent = m.receipt_number || "-";
+        row.insertCell(9).textContent = m.note || "-";
       });
     } else {
-        tbody.innerHTML = `<tr><td colspan="8" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>No results found.</p></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>No results found.</p></td></tr>`;
     }
 }
 
@@ -183,7 +199,14 @@ document.getElementById("movement-form").addEventListener("submit", async functi
 
     console.log("Calling postData...");
     const data = await postData("/stock-movements", {
-        part_id, movement_type, quantity, department, receiver, receipt_number, note, due_date
+        part_id, 
+        movement_type, 
+        quantity, 
+        department, 
+        receiver, 
+        receipt_number, 
+        note, 
+        due_date: movement_type === "BORROW" ? due_date : "" // Only send due_date for BORROW
     }, token);
 
     showToast("Stock movement recorded successfully!", "success");
