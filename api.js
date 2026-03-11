@@ -54,6 +54,25 @@ async function postData(endpoint, data, token) {
   }
 }
 
+async function putData(endpoint, data, token) {
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(data)
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `PUT failed: ${response.status}`);
+    return result;
+  } catch (err) {
+    console.error(`putData error [${endpoint}]:`, err);
+    throw err;
+  }
+}
+
 function updateUserStatus() {
   const username = localStorage.getItem("username") || "User";
   const role = localStorage.getItem("role") || "";

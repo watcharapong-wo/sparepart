@@ -31,7 +31,7 @@
       <button id="export-movements" class="btn btn-success" data-i18n="exportCSV">Export CSV</button>
     </div>
 
-    <div class="movements-grid">
+    <div style="margin-bottom: 24px;">
       <!-- Left side: Form -->
       <div class="card" data-role-required="admin,co-admin,staff">
         <div class="card-title" data-i18n="recordMovement">Record Stock Movement</div>
@@ -47,6 +47,7 @@
           </div>
           <div class="stacked-form-group">
             <label data-i18n="part">Part:</label>
+            <input type="text" id="part-search-input" data-i18n-placeholder="searchPart" style="margin-bottom: 8px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; width: 100%; box-sizing: border-box;">
             <select id="part-select" required></select>
           </div>
           <div class="stacked-form-group">
@@ -83,17 +84,6 @@
           </div>
         </form>
       </div>
-
-      <!-- Right side: Low Stock Items -->
-      <div class="card">
-        <div class="card-title">Low Stock Items</div>
-        <table id="low-stock-table">
-          <tbody>
-            <!-- Data dynamically inserted -->
-          </tbody>
-        </table>
-      </div>
-    </div>
 
     <!-- Bottom: Recent Movements -->
     <div class="card" style="margin-top: 24px;">

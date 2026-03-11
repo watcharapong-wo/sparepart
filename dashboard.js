@@ -36,14 +36,15 @@ async function loadDashboard() {
   try {
     console.log("Loading dashboard data...");
     // Parallel Fetching
-    const [stockValueResp, lowStock, movements, warehouseValue, trends, monthlyData, expensesByWarehouse] = await Promise.all([
+    const [stockValueResp, lowStock, movements, warehouseValue, trends, monthlyData, expensesByWarehouse, accountData] = await Promise.all([
       fetchData("/report/value", token),
       fetchData("/report/low-stock", token),
       fetchData("/report/movements3", token),
       fetchData("/report/value-by-warehouse", token),
       fetchData("/report/movement-trends", token),
       fetchData("/report/monthly-comparison", token),
-      fetchData("/report/expense-by-warehouse", token)
+      fetchData("/report/expense-by-warehouse", token),
+      fetchData("/report/withdraw-by-account", token)
     ]);
 
     // Update Stats
@@ -74,6 +75,7 @@ async function loadDashboard() {
       if (trends) renderTrendChart(trends);
       if (monthlyData) renderMonthlyChart(monthlyData);
       if (warehouseValue) renderWarehouseChart(warehouseValue);
+      if (accountData) renderAccountChart(accountData);
 
       // Populate Specific Warehouse Expenses
       const lpn1 = expensesByWarehouse.find(w => w.warehouse_name === 'LPN1');
@@ -201,4 +203,36 @@ async function loadOverdueAlerts() {
   } catch (err) {
     console.warn("Failed to load overdue alerts:", err);
   }
+}
+
+function renderAccountChart(data) {
+  const chartEl = document.getElementById("account-chart");
+  if (!chartEl) return;
+  const ctx = chartEl.getContext("2d");
+  
+  if (charts.account) charts.account.destroy();
+  charts.account = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.receiver),
+      datasets: [{
+        label: 'Total Quantity Withdrawn',
+        data: data.map(d => d.total_qty),
+        backgroundColor: 'rgba(139, 92, 246, 0.6)',
+        borderColor: '#8b5cf6',
+        borderWidth: 1,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      scales: {
+        x: { beginAtZero: true }
+      },
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
 }

@@ -321,17 +321,35 @@ app.get("/report/movements2", authenticateToken, requireRole(["admin", "co-admin
 
 // รายงานประวัติการเคลื่อนไหวของสต็อก (movements3)
 app.get("/report/activity-logs", authenticateToken, requireRole(["admin"]), (req, res) => {
-  const sql = `
+  const { startDate, endDate, search } = req.query;
+  let sql = `
     SELECT 
       l.*, 
       u.username,
       u.role
     FROM activity_logs l
     LEFT JOIN users u ON u.id = l.user_id
-    ORDER BY l.timestamp DESC
-    LIMIT 500
+    WHERE 1=1
   `;
-  db.all(sql, [], (err, rows) => {
+  const params = [];
+
+  if (startDate) {
+    sql += " AND l.timestamp >= ?";
+    params.push(startDate + " 00:00:00");
+  }
+  if (endDate) {
+    sql += " AND l.timestamp <= ?";
+    params.push(endDate + " 23:59:59");
+  }
+  if (search) {
+    sql += " AND (l.action LIKE ? OR l.details LIKE ? OR u.username LIKE ?)";
+    const searchParam = `%${search}%`;
+    params.push(searchParam, searchParam, searchParam);
+  }
+
+  sql += " ORDER BY l.timestamp DESC LIMIT 500";
+
+  db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
@@ -446,6 +464,26 @@ app.get("/report/monthly-comparison", authenticateToken, (req, res) => {
   });
 });
 
+// [NEW] รายงานการเบิกแยกตามบัญชีผู้รับ (Receiver)
+app.get("/report/withdraw-by-account", authenticateToken, (req, res) => {
+  const sql = `
+    SELECT 
+      receiver, 
+      SUM(quantity) as total_qty
+    FROM stock_movements
+    WHERE movement_type IN ('OUT', 'BORROW')
+      AND receiver IS NOT NULL
+      AND TRIM(receiver) <> ''
+    GROUP BY receiver
+    ORDER BY total_qty DESC
+    LIMIT 10
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
 // เพิ่มฟิลด์ warehouseId ในตาราง spare_parts (ถ้ายังไม่มี)
 db.all("PRAGMA table_info(spare_parts)", [], (err, cols) => {
   if (err) return console.error("PRAGMA error:", err.message);
@@ -495,6 +533,77 @@ app.post(
         res.status(201).json({ id: this.lastID });
       }
     );
+  }
+);
+
+// [TEMP] Cleanup endpoint for IDs 16-292
+app.get("/spareparts-cleanup", (req, res) => {
+  db.run("DELETE FROM spare_parts WHERE id BETWEEN 16 AND 292", function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "Deleted " + this.changes + " rows" });
+  });
+});
+
+// [NEW] API สำหรับเพิ่มอะไหล่จำนวนมาก (Bulk Import)
+app.post(
+  "/spareparts/bulk",
+  authenticateToken,
+  requireRole(["admin", "co-admin"]),
+  (req, res) => {
+    const { parts } = req.body;
+    if (!Array.isArray(parts) || parts.length === 0) {
+      return res.status(400).json({ error: "Parts must be an array and not empty" });
+    }
+
+    // ดึงข้อมูลคลังสินค้าเพื่อทำ Mapping ชื่อเป็น ID
+    db.all("SELECT id, name FROM warehouses", [], (err, warehouses) => {
+      if (err) return res.status(500).json({ error: err.message });
+
+      const warehouseMap = {};
+      warehouses.forEach(w => warehouseMap[w.name.toLowerCase()] = w.id);
+
+      db.serialize(() => {
+        db.run("BEGIN TRANSACTION");
+        const stmt = db.prepare(`
+          INSERT INTO spare_parts (part_no, name, description, quantity, price, warehouseId)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+
+        let count = 0;
+        try {
+          parts.forEach(p => {
+            let wId = p.warehouseId;
+            if (!wId && p.warehouse_name) {
+              wId = warehouseMap[p.warehouse_name.toLowerCase()];
+            }
+            // ถ้าไม่มีคลังสินค้าตามที่ระบุ ให้ใช้คลังแรกเป็น default (ถ้ามี)
+            if (!wId && warehouses.length > 0) wId = warehouses[0].id;
+
+            stmt.run([
+              String(p.part_no || ""),
+              String(p.name || ""),
+              p.description || null,
+              p.quantity || 0,
+              p.price || 0,
+              wId || null
+            ]);
+            count++;
+          });
+          stmt.finalize();
+          db.run("COMMIT", (err2) => {
+            if (err2) {
+              db.run("ROLLBACK");
+              return res.status(500).json({ error: err2.message });
+            }
+            logActivity(req.user.userId, "BULK_CREATE_PART", `Bulk created ${count} parts via import`);
+            res.status(201).json({ message: `Successfully imported ${count} parts`, count });
+          });
+        } catch (error) {
+          db.run("ROLLBACK");
+          res.status(500).json({ error: error.message });
+        }
+      });
+    });
   }
 );
 

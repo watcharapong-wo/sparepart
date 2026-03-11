@@ -32,6 +32,8 @@
           <span style="color: var(--text-muted); margin-right: 8px;">🔍</span>
           <input type="text" id="part-search" data-i18n="searchParts" placeholder="Search by Part No or Name...">
         </div>
+        <input type="file" id="import-csv-file" accept=".csv" style="display: none;">
+        <button id="import-parts" class="btn btn-primary" style="background-color: var(--warning); border-color: var(--warning); color: #000;" data-i18n="importCSV">📥 Import CSV</button>
         <button id="export-parts" class="btn btn-success" data-i18n="exportCSV">Export CSV</button>
         <button onclick="loadSpareParts()" class="btn btn-primary" data-i18n="reloadParts">↻ Reload Parts</button>
       </div>
@@ -92,20 +94,6 @@
     </div>
 
     <div class="dashboard-grid" style="margin-top: 24px;">
-      <!-- Delete Spare Part Form -->
-      <div class="card" data-role-required="admin,co-admin">
-        <div class="card-title" data-i18n="deleteSparePart">Delete Spare Part</div>
-        <form id="delete-part-form" class="form-grid" style="grid-template-columns: 1fr;">
-          <div class="stacked-form-group">
-            <label for="delete-id" data-i18n="partId">Part ID:</label>
-            <input type="number" id="delete-id" required>
-          </div>
-          <div class="form-actions" style="margin-top: 8px;">
-            <button type="submit" class="btn btn-danger" data-i18n="deleteSparePart">Delete</button>
-          </div>
-        </form>
-      </div>
-
       <!-- Manage Warehouses Card -->
       <div class="card" data-role-required="admin,co-admin">
         <div class="card-title" data-i18n="manageWarehouses">Manage Warehouses</div>

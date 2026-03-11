@@ -28,6 +28,7 @@ document.getElementById("part-select")?.addEventListener("change", function() {
 });
 
 let allMovements = [];
+let cachedParts = [];
 
 document.getElementById("movement-search")?.addEventListener("input", function() {
     const searchTerm = this.value.toLowerCase();
@@ -49,21 +50,40 @@ async function loadParts() {
   try {
     const token = localStorage.getItem("token");
     const data = await fetchData("/spareparts", token);
-    const select = document.getElementById("part-select");
-    if (!select) return;
-    select.innerHTML = "";
-    if (Array.isArray(data)) {
-      data.forEach(part => {
-        const option = document.createElement("option");
-        option.value = part.id;
-        option.textContent = `${part.part_no} - ${part.name} (In stock: ${part.quantity})`;
-        select.appendChild(option);
-      });
-    }
+    cachedParts = Array.isArray(data) ? data : [];
+    renderPartOptions(cachedParts);
   } catch (err) {
     console.error("Failed to load parts", err);
   }
 }
+
+function renderPartOptions(parts) {
+  const select = document.getElementById("part-select");
+  if (!select) return;
+  select.innerHTML = "";
+  if (parts.length > 0) {
+    parts.forEach(part => {
+      const option = document.createElement("option");
+      option.value = part.id;
+      option.textContent = `${part.part_no} - ${part.name} (In stock: ${part.quantity})`;
+      select.appendChild(option);
+    });
+    // Trigger change to update Spare Part No field
+    select.dispatchEvent(new Event("change"));
+  } else {
+    const sparepartNoInput = document.getElementById("sparepart-no");
+    if (sparepartNoInput) sparepartNoInput.value = "";
+  }
+}
+
+document.getElementById("part-search-input")?.addEventListener("input", function() {
+    const searchTerm = this.value.toLowerCase();
+    const filtered = cachedParts.filter(p => 
+        (p.name || "").toLowerCase().includes(searchTerm) || 
+        (p.part_no || "").toLowerCase().includes(searchTerm)
+    );
+    renderPartOptions(filtered);
+});
 
 async function loadReasons() {
   try {
@@ -82,30 +102,6 @@ async function loadReasons() {
     }
   } catch (err) {
     console.error("Failed to load reasons", err);
-  }
-}
-
-async function loadLowStock() {
-  try {
-    const token = localStorage.getItem("token");
-    const tbody = document.getElementById("low-stock-table").getElementsByTagName("tbody")[0];
-    if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="3" class="table-loading-state"><div class="spinner"></div>Loading...</td></tr>`;
-
-    const data = await fetchData("/report/low-stock", token);
-    tbody.innerHTML = "";
-    if (Array.isArray(data) && data.length > 0) {
-      data.forEach(item => {
-        const row = tbody.insertRow();
-        row.insertCell(0).textContent = item.part_no;
-        row.insertCell(1).textContent = item.name;
-        row.insertCell(2).textContent = item.quantity;
-      });
-    } else {
-      tbody.innerHTML = `<tr><td colspan="3" class="table-empty-state"><i style="font-size: 24px;">📦</i><p>Stock levels are healthy.</p></td></tr>`;
-    }
-  } catch (err) {
-    console.error("Failed to load low stock", err);
   }
 }
 
@@ -212,7 +208,6 @@ document.getElementById("movement-form").addEventListener("submit", async functi
     showToast("Stock movement recorded successfully!", "success");
     document.getElementById("movement-form").reset();
     loadParts();
-    loadLowStock();
     loadMovements();
   } catch (err) {
     console.error("Submission failed ERROR:", err);
@@ -224,7 +219,6 @@ document.getElementById("movement-form").addEventListener("submit", async functi
 (async () => {
   await loadParts();
   await loadReasons();
-  await loadLowStock();
   await loadMovements();
   if (typeof updateUserStatus === 'function') updateUserStatus();
 })();

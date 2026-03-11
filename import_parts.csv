@@ -1,0 +1,21 @@
+part_no,name,description,quantity,price,warehouse_name
+Oker-EB-650W,Power Supply,Oker EB 650W,10,850,LPN1
+PHILIPS-17S4LSB,LCD Monitor 17",Philips PHILIPS 17S4LSB/00,5,2500,LPN1
+DAHUA-LM24-A200,LCD Monitor 23.6",DAHUA LM24-A200 (VA VGA HDMI),5,3200,LPN1
+Samsung-LS22F350FHE,LCD Monitor 24",Samsung (LS22F350FHE+ HDMI),5,3500,LPN1
+Acer-AOPEN-22,LCD Monitor 21.5",Acer AOPEN 22" LED22CL1QE3bi,5,2900,LPN1
+Intel-i5-14400F,CPU,Intel Core i5-14400F @2.50 GHz,2,7500,LPN1
+Intel-i3-14100F,CPU,Intel i3-14100F @4.70 GHz,2,4500,LPN1
+Intel-G5400,CPU Intel G5400,intel Socket 1700,2,2200,LPN1
+Logitech-M100r,Mouse,Logitech M100r USB,20,250,LPN1
+Rapoo-Wireless,Mouse,Rapoo Wireless,10,450,LPN1
+Logitech-K120,Keyboard,Logitech K120 USB,15,350,LPN1
+Intel-G6400,CPU INTEL PENTIUM GOLD,G6400 4.0 GHz Socket LGA 1200,2,2800,LPN1
+EAP225-Outdoor,Accesspoint,TP Link EAP225 Outdoor,3,2500,LPN2
+DLINK-PCI-WL,PCI WIRELESS,D-LINK Wireless Card,5,450,LPN2
+Switch-TP8,Switch HUB 8 Port,TP-LINK 10/100,4,650,LPN2
+Switch-DL16,Switch HUB 16 Port,D-LINK DES1016A/DES1016D,2,1200,LPN2
+C1000-8T-2G-L,management switch 8 Port,Cisco C1000-8T-2G-L,1,8500,LPN2
+YOUJIE-ZL2200,Barcode scanner 1D,YOUJIE ZL2200,2,1800,LPN2
+Brother-TZE-6,Tape Print Label,Brother TZE-6,10,450,LPN2
+Kingston-DT100,Handy drive,Kingston 64Gb DataTraveler 100,10,350,LPN2
