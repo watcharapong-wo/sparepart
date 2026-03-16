@@ -256,8 +256,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const token = localStorage.getItem("token");
       await postData("/spareparts", { part_no, name, description, quantity, price, warehouseId, serials }, token);
       this.reset();
-      const serialsGroup = document.getElementById("serials-input-group");
-      if (serialsGroup) serialsGroup.style.display = "none";
       showToast(translations[currentLang].saveSuccess || "Saved successfully", "success");
       loadSpareParts();
     } catch (err) {

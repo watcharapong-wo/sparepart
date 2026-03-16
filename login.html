@@ -8,19 +8,21 @@
 </head>
 <body class="login-page">
   <div class="login-overlay"></div>
-  <div class="login-container">
-    <div class="logo-wrapper">
-      <span class="logo-text">HANA</span>
+  <div class="login-wrapper">
+    <div class="login-container">
+      <div class="logo-wrapper">
+        <span class="logo-text">HANA</span>
+      </div>
+      <h1 data-i18n="loginSystem">it Spare part System</h1>
+      <form id="login-form">
+        <input type="text" id="username" placeholder="Username" data-i18n="username" required>
+        <input type="password" id="password" placeholder="Password" data-i18n="password" required>
+        <button type="submit" data-i18n="login">Login</button>
+      </form>
     </div>
-    <h1 data-i18n="loginSystem">it Spare part System</h1>
-    <form id="login-form">
-      <input type="text" id="username" placeholder="Username" data-i18n="username" required>
-      <input type="password" id="password" placeholder="Password" data-i18n="password" required>
-      <button type="submit" data-i18n="login">Login</button>
-    </form>
   </div>
 
-  <footer class="footer">
+  <footer class="footer" style="position: fixed; bottom: 0; left: 0; right: 0;">
     Hana Microelectronics Public Co., Ltd. | Dev by <span>Watcharapong W.</span> IT Eng.
   </footer>
 

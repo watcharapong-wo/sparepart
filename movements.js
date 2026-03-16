@@ -157,7 +157,7 @@ function renderPartOptions(parts) {
     parts.forEach(part => {
       const option = document.createElement("option");
       option.value = part.id;
-      option.textContent = `${part.part_no} - ${part.name} (In stock: ${part.quantity})`;
+      option.textContent = `${part.name} - ${part.part_no}${part.description ? ' - ' + part.description : ''} (In stock: ${part.quantity})`;
       select.appendChild(option);
     });
     // Trigger change to update Spare Part No field
