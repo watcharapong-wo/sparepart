@@ -1,4 +1,4 @@
-window.API_URL = `${window.location.protocol}//${window.location.hostname}:4001`;
+window.API_URL = `${window.location.protocol}//${window.location.hostname}:4003`;
 const API_URL = window.API_URL;
 
 async function fetchData(endpoint, token) {
@@ -117,6 +117,31 @@ function exportToCSV(data, filename) {
 document.addEventListener("DOMContentLoaded", () => {
   checkPermissions();
   updateUserStatus();
+  
+  // Auto-logout after 5 minutes of inactivity
+  const token = localStorage.getItem("token");
+  if (token && !window.location.pathname.endsWith("login.html")) {
+    let inactivityTimeout;
+    const INACTIVITY_LIMIT = 5 * 60 * 1000; // 5 minutes
+
+    const logoutUser = () => {
+      localStorage.clear();
+      alert("You have been logged out due to inactivity.");
+      window.location.href = "login.html";
+    };
+
+    const resetInactivityTimer = () => {
+      clearTimeout(inactivityTimeout);
+      inactivityTimeout = setTimeout(logoutUser, INACTIVITY_LIMIT);
+    };
+
+    // Reset timer on these events
+    const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+    events.forEach(event => document.addEventListener(event, resetInactivityTimer, { passive: true }));
+
+    resetInactivityTimer(); // Start the timer
+  }
+
   const logoutBtn = document.getElementById("logout-btn");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", (e) => {

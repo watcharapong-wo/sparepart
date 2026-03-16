@@ -67,6 +67,8 @@ async function loadSpareParts() {
   try {
     const token = localStorage.getItem("token");
     const data = await fetchData("/spareparts", token);
+    // Ensure latest parts are at the top (Double-check sorting)
+    data.sort((a, b) => b.id - a.id);
     sparePartsCache = data || [];
     renderSparePartsTable(sparePartsCache);
   } catch (err) {
@@ -81,11 +83,12 @@ function renderSparePartsTable(data) {
     if (Array.isArray(data) && data.length > 0) {
       data.forEach((p, index) => {
         const tr = document.createElement("tr");
+        tr.id = `row-${p.id}`; // Add unique ID to row
         tr.innerHTML = `
           <td>${index + 1}</td>
           <td>${p.id}</td>
-          <td>${p.part_no}</td>
           <td>${p.name}</td>
+          <td>${p.part_no}</td>
           <td>${p.description || ""}</td>
           <td>${p.quantity}</td>
           <td class="cell-price">${p.price ?? ""}</td>
@@ -100,7 +103,7 @@ function renderSparePartsTable(data) {
         tbody.appendChild(tr);
       });
     } else {
-      tbody.innerHTML = `<tr><td colspan="9" class="table-empty-state"><i style="color:var(--danger)">❌</i>Failed to load data</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="table-empty-state"><i style="color:var(--text-muted)">ℹ️</i> ${translations[currentLang].noData || "No data found"}</td></tr>`;
     }
     if (typeof applyTranslations === "function") applyTranslations();
     if (typeof checkPermissions === "function") checkPermissions();
@@ -112,12 +115,16 @@ function editPart(id) {
   if (!part) return;
 
   const index = sparePartsCache.indexOf(part);
-  const tr = document.querySelector(`#spareparts-table tbody tr:nth-child(${index + 1})`);
+  const tr = document.getElementById(`row-${id}`);
+  if (!tr) {
+    console.error("Row not found for ID:", id);
+    return;
+  }
   tr.innerHTML = `
     <td>${index + 1}</td>
     <td>${part.id}</td>
-    <td><input type="text" id="edit-part_no-${id}" value="${part.part_no}" style="width:100px;"></td>
     <td><input type="text" id="edit-name-${id}" value="${part.name}" style="width:150px;"></td>
+    <td><input type="text" id="edit-part_no-${id}" value="${part.part_no}" style="width:100px;"></td>
     <td><input type="text" id="edit-desc-${id}" value="${part.description || ""}" style="width:200px;"></td>
     <td><input type="number" id="edit-qty-${id}" value="${part.quantity}" style="width:60px;"></td>
     <td><input type="number" id="edit-price-${id}" value="${part.price ?? 0}" style="width:80px;"></td>
@@ -172,20 +179,96 @@ document.addEventListener("DOMContentLoaded", () => {
   loadWarehouses();
   loadSpareParts();
 
+  // Sync quantity with SP no count and check for internal duplicates
+  document.getElementById("add-serials")?.addEventListener("input", function() {
+    const rawVal = this.value;
+    const lines = rawVal.split("\n").filter(line => line.trim() !== "");
+    const trimmedLines = lines.map(l => l.trim());
+    
+    // Check for internal duplicates in the textarea
+    const duplicates = trimmedLines.filter((item, index) => trimmedLines.indexOf(item) !== index);
+    if (duplicates.length > 0) {
+      this.style.borderColor = "#ef4444"; // Red border
+      this.title = "Duplicate SP no detected: " + [...new Set(duplicates)].join(", ");
+    } else {
+      this.style.borderColor = "#cbd5e1"; // Default border
+      this.title = "";
+    }
+
+    const qtyInput = document.getElementById("add-quantity");
+    if (qtyInput) {
+      qtyInput.value = lines.length;
+      qtyInput.readOnly = true;
+    }
+  });
+
+  // Make quantity readonly if there is serial input
+  const initialSerials = document.getElementById("add-serials")?.value;
+  if (initialSerials) {
+    const qtyInput = document.getElementById("add-quantity");
+    if (qtyInput) qtyInput.readOnly = true;
+  }
+
+  document.getElementById("manage-warehouses-form")?.addEventListener("submit", async function(e) {
+    e.preventDefault();
+    const nameInput = document.getElementById("new-warehouse-name");
+    const name = nameInput.value.trim();
+    if (!name) return;
+    try {
+      await addWarehouse(name);
+      nameInput.value = "";
+      showToast(translations[currentLang].saveSuccess || "Warehouse added", "success");
+    } catch (err) {
+      showToast(translations[currentLang].saveError || "Failed to add warehouse", "error");
+    }
+  });
+
   document.getElementById("add-part-form")?.addEventListener("submit", async function (e) {
     e.preventDefault();
-    const part_no = document.getElementById("add-part_no").value;
-    const name = document.getElementById("add-name").value;
-    const description = document.getElementById("add-desc").value;
-    const quantity = parseInt(document.getElementById("add-qty").value) || 0;
-    const price = parseFloat(document.getElementById("add-price").value) || 0;
-    const warehouseId = document.getElementById("add-warehouse-select").value;
+    try {
+      const part_no = document.getElementById("add-part-no").value;
+      const name = document.getElementById("add-name").value;
+      const description = document.getElementById("add-description").value;
+      const quantity = parseInt(document.getElementById("add-quantity").value) || 0;
+      const price = parseFloat(document.getElementById("add-price").value) || 0;
+      const warehouseId = document.getElementById("add-warehouse-select").value;
 
-    const token = localStorage.getItem("token");
-    await postData("/spareparts", { part_no, name, description, quantity, price, warehouseId }, token);
-    this.reset();
-    showToast(translations[currentLang].saveSuccess, "success");
-    loadSpareParts();
+      const serialsRaw = document.getElementById("add-serials")?.value || "";
+      const serials = serialsRaw.split("\n").filter(s => s.trim()).map(s => s.trim());
+      
+      if (serials.length === 0) {
+        showToast("Please enter at least one SP no", "error");
+        return;
+      }
+
+      // Strict duplicate check before submission
+      const duplicates = serials.filter((item, index) => serials.indexOf(item) !== index);
+      if (duplicates.length > 0) {
+        showToast("Duplicate SP no detected: " + [...new Set(duplicates)].join(", "), "error");
+        const serialsEl = document.getElementById("add-serials");
+        if (serialsEl) {
+          serialsEl.style.borderColor = "#ef4444";
+          serialsEl.focus();
+        }
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      await postData("/spareparts", { part_no, name, description, quantity, price, warehouseId, serials }, token);
+      this.reset();
+      const serialsGroup = document.getElementById("serials-input-group");
+      if (serialsGroup) serialsGroup.style.display = "none";
+      showToast(translations[currentLang].saveSuccess || "Saved successfully", "success");
+      loadSpareParts();
+    } catch (err) {
+      console.error("Save failed:", err);
+      if (err.status === 409) {
+        const errorData = await err.response.json();
+        showToast(`Duplicate SP no: ${errorData.serial}`, "error");
+      } else {
+        showToast(translations[currentLang].saveError || "Failed to save part", "error");
+      }
+    }
   });
 
   // CSV Export
@@ -244,6 +327,20 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       };
       reader.readAsText(file, "windows-874");
+    });
+  }
+
+  // Search Filter
+  const partSearchInput = document.getElementById("part-search");
+  if (partSearchInput) {
+    partSearchInput.addEventListener("input", (e) => {
+      const term = e.target.value.toLowerCase();
+      const filtered = sparePartsCache.filter(p => 
+        (p.part_no && p.part_no.toLowerCase().includes(term)) ||
+        (p.name && p.name.toLowerCase().includes(term)) ||
+        (p.description && p.description.toLowerCase().includes(term))
+      );
+      renderSparePartsTable(filtered);
     });
   }
 });

@@ -63,8 +63,8 @@ async function loadDashboard() {
           <tr>
             <td>${formatDate(m.movement_date)}</td>
             <td>${m.movement_type === 'OUT' ? 'OUT' : 'IN'} ${m.quantity}</td>
-            <td>${m.part_no || '-'}</td>
             <td>${m.part_name || '-'}</td>
+            <td>${m.part_no || '-'}</td>
             <td>${m.note || m.department || m.receiver || '-'}</td>
             <td><span class="badge" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; font-size: 11px; padding: 2px 6px; border-radius: 4px;">${m.username || '-'}</span></td>
           </tr>

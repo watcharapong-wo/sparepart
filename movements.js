@@ -25,6 +25,98 @@ document.getElementById("part-select")?.addEventListener("change", function() {
     const partNo = selectedPart.split(" - ")[0];
     const sparepartNoInput = document.getElementById("sparepart-no");
     if (sparepartNoInput) sparepartNoInput.value = partNo;
+    fetchSerials(this.value);
+});
+
+async function fetchSerials(partId) {
+  const serialGroup = document.getElementById("serial-selection-group");
+  const inSerialGroup = document.getElementById("in-serials-group");
+  const serialList = document.getElementById("serial-list");
+  const qtyInput = document.getElementById("quantity");
+  const type = document.getElementById("movement-type").value;
+
+  if (!partId) {
+    if (serialGroup) serialGroup.style.display = "none";
+    if (inSerialGroup) inSerialGroup.style.display = "none";
+    return;
+  }
+
+  // Handle Stock IN separate logic
+  if (type === "IN") {
+    if (serialGroup) serialGroup.style.display = "none";
+    if (inSerialGroup) {
+      inSerialGroup.style.display = "block";
+      qtyInput.readOnly = true;
+      updateInSerialsCount();
+    }
+    return;
+  } else {
+    if (inSerialGroup) inSerialGroup.style.display = "none";
+  }
+
+  try {
+    const token = localStorage.getItem("token");
+    const serials = await fetchData(`/spareparts/${partId}/serials`, token);
+    
+    if (serials && serials.length > 0) {
+      serialGroup.style.display = "block";
+      serialList.innerHTML = serials.map(s => `
+        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 13px; background: var(--bg-main); padding: 5px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
+          <input type="checkbox" name="serial" value="${s.id}" onchange="updateSelectedSerialsCount()">
+          ${s.serial_no}
+        </label>
+      `).join("");
+      qtyInput.readOnly = true;
+      qtyInput.value = 0;
+    } else {
+      serialGroup.style.display = "none";
+      qtyInput.readOnly = false;
+    }
+    updateSelectedSerialsCount();
+  } catch (err) {
+    console.error("Failed to fetch serials", err);
+  }
+}
+
+function updateSelectedSerialsCount() {
+  const checkboxes = document.querySelectorAll('input[name="serial"]:checked');
+  const countDisplay = document.getElementById("selected-count");
+  const qtyInput = document.getElementById("quantity");
+  if (countDisplay) countDisplay.textContent = checkboxes.length;
+  if (qtyInput && qtyInput.readOnly && document.getElementById("movement-type").value !== "IN") {
+    qtyInput.value = checkboxes.length;
+  }
+}
+
+function updateInSerialsCount() {
+  const textarea = document.getElementById("in-serials");
+  const qtyInput = document.getElementById("quantity");
+  if (textarea && qtyInput && document.getElementById("movement-type").value === "IN") {
+    const count = textarea.value.split("\n").filter(s => s.trim()).length;
+    qtyInput.value = count;
+  }
+}
+
+document.getElementById("in-serials")?.addEventListener("input", function() {
+  const rawVal = this.value;
+  const lines = rawVal.split("\n").filter(line => line.trim() !== "");
+  const trimmedLines = lines.map(l => l.trim());
+  
+  // Internal duplicate check
+  const duplicates = trimmedLines.filter((item, index) => trimmedLines.indexOf(item) !== index);
+  if (duplicates.length > 0) {
+    this.style.borderColor = "#ef4444";
+    this.title = "Duplicate SP no detected: " + [...new Set(duplicates)].join(", ");
+  } else {
+    this.style.borderColor = "#cbd5e1";
+    this.title = "";
+  }
+  updateInSerialsCount();
+});
+
+document.getElementById("movement-type")?.addEventListener("change", function() {
+  const partId = document.getElementById("part-select")?.value;
+  if(partId) fetchSerials(partId);
 });
 
 let allMovements = [];
@@ -88,20 +180,20 @@ document.getElementById("part-search-input")?.addEventListener("input", function
 async function loadReasons() {
   try {
     const token = localStorage.getItem("token");
-    const data = await fetchData("/reasons", token);
+    const data = await fetchData("/warehouses", token);
     const select = document.getElementById("reason-select");
     if (!select) return;
     select.innerHTML = "";
     if (Array.isArray(data)) {
-      data.forEach(r => {
+      data.forEach(w => {
         const option = document.createElement("option");
-        option.value = r.name;
-        option.textContent = r.name;
+        option.value = w.name;
+        option.textContent = w.name;
         select.appendChild(option);
       });
     }
   } catch (err) {
-    console.error("Failed to load reasons", err);
+    console.error("Failed to load warehouses for movement", err);
   }
 }
 
@@ -134,14 +226,19 @@ function displayMovements(data) {
                           m.movement_type === 'BORROW' ? 'text-warning' :
                           m.movement_type === 'RETURN' ? 'text-info' : 'text-primary';
         typeCell.innerHTML = `<span class="${typeClass}">${m.movement_type}</span>`;
-        row.insertCell(2).textContent = m.part_no || "-";
-        row.insertCell(3).textContent = m.part_name || "-";
+        row.insertCell(2).textContent = m.part_name || "-";
+        row.insertCell(3).textContent = m.part_no || "-";
         row.insertCell(4).textContent = m.quantity;
-        row.insertCell(5).textContent = m.department || "-";
-        row.insertCell(6).textContent = formatDate(m.due_date);
-        row.insertCell(7).textContent = m.receiver || "-";
-        row.insertCell(8).textContent = m.receipt_number || "-";
-        row.insertCell(9).textContent = m.note || "-";
+        
+        // Value Cell
+        const totalVal = (m.quantity || 0) * (m.price || 0);
+        row.insertCell(5).textContent = totalVal.toLocaleString();
+
+        row.insertCell(6).textContent = m.department || "-";
+        row.insertCell(7).textContent = formatDate(m.due_date);
+        row.insertCell(8).textContent = m.receiver || "-";
+        row.insertCell(9).textContent = m.receipt_number || "-";
+        row.insertCell(10).textContent = m.note || "-";
       });
     } else {
         tbody.innerHTML = `<tr><td colspan="10" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>No results found.</p></td></tr>`;
@@ -193,6 +290,24 @@ document.getElementById("movement-form").addEventListener("submit", async functi
     // Bypass confirm() as it seems to be suppressed in user environment
     console.log("Proceeding with submission (skipping confirm)...");
 
+    const selectedSerials = Array.from(document.querySelectorAll('input[name="serial"]:checked')).map(cb => parseInt(cb.value));
+    const newSerialsRaw = document.getElementById("in-serials")?.value || "";
+    const newSerials = movement_type === "IN" ? newSerialsRaw.split("\n").filter(s => s.trim()).map(s => s.trim()) : [];
+
+    // Strict duplicate check before submission for IN
+    if (movement_type === "IN" && newSerials.length > 0) {
+      const duplicates = newSerials.filter((item, index) => newSerials.indexOf(item) !== index);
+      if (duplicates.length > 0) {
+        showToast("Duplicate SP no detected: " + [...new Set(duplicates)].join(", "), "error");
+        const inSerialsEl = document.getElementById("in-serials");
+        if (inSerialsEl) {
+          inSerialsEl.style.borderColor = "#ef4444";
+          inSerialsEl.focus();
+        }
+        return;
+      }
+    }
+
     console.log("Calling postData...");
     const data = await postData("/stock-movements", {
         part_id, 
@@ -202,16 +317,26 @@ document.getElementById("movement-form").addEventListener("submit", async functi
         receiver, 
         receipt_number, 
         note, 
-        due_date: movement_type === "BORROW" ? due_date : "" // Only send due_date for BORROW
+        due_date: movement_type === "BORROW" ? due_date : "", // Only send due_date for BORROW
+        serial_ids: selectedSerials,
+        new_serials: newSerials
     }, token);
 
     showToast("Stock movement recorded successfully!", "success");
     document.getElementById("movement-form").reset();
+    document.getElementById("serial-selection-group").style.display = "none";
+    document.getElementById("in-serials-group").style.display = "none";
     loadParts();
     loadMovements();
   } catch (err) {
     console.error("Submission failed ERROR:", err);
-    showToast("An error occurred: " + err.message, "error");
+    if (err.status === 409) {
+      const errorData = await err.response.json();
+      const dupList = Array.isArray(errorData.serials) ? errorData.serials.join(", ") : errorData.serial || "Unknown";
+      showToast(`Duplicate SP no: ${dupList}`, "error");
+    } else {
+      showToast("An error occurred: " + err.message, "error");
+    }
   }
 });
 
@@ -235,6 +360,7 @@ if (exportBtn) {
           'Type': item.movement_type,
           'Part Name': item.part_name || item.part_no,
           'Quantity': item.quantity,
+          'Total Value': (item.quantity || 0) * (item.price || 0),
           'Category/Dept': item.department || "-",
           'Due Date': formatDate(item.due_date),
           'Receiver': item.receiver || "-",

@@ -43,12 +43,12 @@
       <div class="card-title" data-i18n="addSparePart">Add Spare Part</div>
       <form id="add-part-form" class="form-grid">
         <div class="stacked-form-group">
-          <label data-i18n="partNo">Part No</label>
-          <input type="text" id="add-part-no" required>
+          <label data-i18n="name">Name Device</label>
+          <input type="text" id="add-name" required>
         </div>
         <div class="stacked-form-group">
-          <label data-i18n="name">Name</label>
-          <input type="text" id="add-name" required>
+          <label data-i18n="partNo">Part Type</label>
+          <input type="text" id="add-part-no" required>
         </div>
         <div class="stacked-form-group">
           <label data-i18n="description">Description</label>
@@ -66,6 +66,12 @@
           <label data-i18n="warehouseLabel">Warehouse:</label>
           <select id="add-warehouse-select" required></select>
         </div>
+        <div class="stacked-form-group" style="grid-column: 1 / -1; display: block;">
+          <div id="serials-input-group">
+            <label data-i18n="serialNumbers" style="font-weight: 600;">SP no List (one per line)</label>
+            <textarea id="add-serials" rows="4" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-main);" placeholder="SN001&#10;SN002&#10;SN003" required></textarea>
+          </div>
+        </div>
         <div class="form-actions" style="grid-column: 1 / -1; margin-top: 8px;">
           <button type="submit" class="btn btn-primary" data-i18n="savePart">Save Part</button>
         </div>
@@ -78,8 +84,8 @@
           <tr>
             <th data-i18n="no">No.</th>
             <th data-i18n="id">ID</th>
-            <th data-i18n="partNo">Part No</th>
             <th data-i18n="name">Name</th>
+            <th data-i18n="partNo">Part No</th>
             <th data-i18n="description">Description</th>
             <th data-i18n="quantity">Quantity</th>
             <th data-i18n="price">Price</th>

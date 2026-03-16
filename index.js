@@ -6,8 +6,29 @@ const bcrypt = require("bcryptjs");
 const path = require("path");
 
 const app = express();
-const PORT = 4001;
+const PORT = 4003;
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+
+process.on("uncaughtException", (err) => {
+  console.error("FATAL: Uncaught Exception:", err.message);
+  console.error(err.stack);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("FATAL: Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+// ---------------------------
+
+app.get("/test", (req, res) => {
+  res.json({ message: "Server is alive", timestamp: new Date().toISOString() });
+});
+
+// Log all requests (Moved to top)
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
 
 // ใช้ Middleware
 app.use(cors());
@@ -19,12 +40,6 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 // ---------------------------
-
-// Log all requests
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-  next();
-});
 
 // เปิดฐานข้อมูล
 const dbPath = path.join(__dirname, "sparepart.db");
@@ -119,6 +134,30 @@ db.run(
   )`
 );
 
+db.run(
+  `CREATE TABLE IF NOT EXISTS spare_part_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    part_id INTEGER NOT NULL,
+    serial_no TEXT NOT NULL,
+    status TEXT DEFAULT 'available', -- 'available', 'out', 'borrowed'
+    FOREIGN KEY (part_id) REFERENCES spare_parts(id)
+  )`
+);
+
+db.run(
+  `CREATE TABLE IF NOT EXISTS movement_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    movement_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    FOREIGN KEY (movement_id) REFERENCES stock_movements(id),
+    FOREIGN KEY (item_id) REFERENCES spare_part_items(id)
+  )`,
+  (err) => {
+    if (err) console.error("Create movement_items table error:", err.message);
+    else seedData();
+  }
+);
+
 // Helper function to log activity
 function logActivity(userId, action, details) {
   const sql = "INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)";
@@ -155,10 +194,22 @@ function seedData() {
       console.log("Reasons exist:", row ? row.count : 0);
     }
   });
+
+  // Seed Admin User
+  db.get("SELECT COUNT(*) as count FROM users", (err, row) => {
+    if (err) return console.error("Error checking users:", err.message);
+    if (row && row.count === 0) {
+      console.log("Seeding default admin...");
+      bcrypt.hash("admin123", 10, (err, hashedPassword) => {
+        if (!err) {
+          db.run("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", ["admin", hashedPassword, "admin"]);
+        }
+      });
+    }
+  });
 }
 
-// Seed immediately
-seedData();
+// Seed Data function (called after tables ready)
 
 function authenticateToken(req, res, next) {
   const token = req.header("Authorization")?.replace("Bearer ", "");
@@ -324,7 +375,8 @@ app.get("/report/activity-logs", authenticateToken, requireRole(["admin"]), (req
   const { startDate, endDate, search } = req.query;
   let sql = `
     SELECT 
-      l.*, 
+      l.id, l.user_id, l.action, l.details,
+      strftime('%Y-%m-%dT%H:%M:%SZ', l.timestamp) as timestamp,
       u.username,
       u.role
     FROM activity_logs l
@@ -359,7 +411,7 @@ app.get("/report/movements3", authenticateToken, requireRole(["admin", "co-admin
   const sql = `
     SELECT 
       m.id,
-      m.movement_date,
+      strftime('%Y-%m-%dT%H:%M:%SZ', m.movement_date) as movement_date,
       m.movement_type,
       m.quantity,
       m.due_date,
@@ -371,6 +423,7 @@ app.get("/report/movements3", authenticateToken, requireRole(["admin", "co-admin
       u.role,
       p.part_no,
       p.name AS part_name,
+      p.price,
       p.warehouseId
     FROM stock_movements m
     LEFT JOIN users u ON u.id = m.user_id
@@ -503,7 +556,7 @@ app.get("/spareparts", authenticateToken, requireRole(["admin", "co-admin", "sta
     SELECT p.*, w.name AS warehouse_name 
     FROM spare_parts p
     LEFT JOIN warehouses w ON p.warehouseId = w.id
-    ORDER BY p.part_no
+    ORDER BY p.id DESC
   `;
   db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -517,24 +570,72 @@ app.post(
   authenticateToken,
   requireRole(["admin", "co-admin"]),
   (req, res) => {
-    const { part_no, name, description = null, quantity, price = null, warehouseId } = req.body;
+    const { part_no, name, description = null, quantity, price = null, warehouseId, serials = [] } = req.body;
 
     if (!part_no || !name || !Number.isInteger(quantity)) {
       return res.status(400).json({ error: "BAD_REQUEST" });
     }
 
-    db.run(
-      `INSERT INTO spare_parts (part_no, name, description, quantity, price, warehouseId)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [String(part_no), String(name), description, quantity, price, warehouseId],
-      function (err) {
+    const incomingSerials = Array.isArray(serials) ? serials.map(s => s.trim()).filter(s => s !== "") : [];
+
+    // Check for duplicates in DB
+    if (incomingSerials.length > 0) {
+      const placeholders = incomingSerials.map(() => "?").join(",");
+      db.get(`SELECT serial_no FROM spare_part_items WHERE serial_no IN (${placeholders})`, incomingSerials, (err, row) => {
         if (err) return res.status(500).json({ error: err.message });
-        logActivity(req.user.userId, "CREATE_PART", `Created part: ${part_no} - ${name} with quantity: ${quantity}`);
-        res.status(201).json({ id: this.lastID });
-      }
-    );
+        if (row) {
+          return res.status(409).json({ error: "DUPLICATE_SERIAL", serial: row.serial_no });
+        }
+        proceedToInsert();
+      });
+    } else {
+      proceedToInsert();
+    }
+
+    function proceedToInsert() {
+      db.serialize(() => {
+        db.run("BEGIN TRANSACTION");
+        
+        const insertPartSql = `INSERT INTO spare_parts (part_no, name, description, quantity, price, warehouseId) VALUES (?, ?, ?, ?, ?, ?)`;
+        db.run(insertPartSql, [String(part_no), String(name), description, quantity, price, warehouseId], function (err) {
+          if (err) {
+            db.run("ROLLBACK");
+            return res.status(500).json({ error: err.message });
+          }
+          
+          const partId = this.lastID;
+
+          if (incomingSerials.length > 0) {
+            const itemSql = `INSERT INTO spare_part_items (part_id, serial_no, status) VALUES (?, ?, 'available')`;
+            const stmt = db.prepare(itemSql);
+            incomingSerials.forEach(sn => {
+              stmt.run([partId, sn]);
+            });
+            stmt.finalize();
+          }
+
+          db.run("COMMIT", (err2) => {
+            if (err2) {
+              db.run("ROLLBACK");
+              return res.status(500).json({ error: err2.message });
+            }
+            logActivity(req.user.userId, "CREATE_PART", `Created part: ${part_no} - ${name} with quantity: ${quantity} (${incomingSerials.length} serials)`);
+            res.status(201).json({ id: partId });
+          });
+        });
+      });
+    }
   }
 );
+
+// API GET available serials for a part
+app.get("/spareparts/:id/serials", authenticateToken, (req, res) => {
+  const { id } = req.params;
+  db.all("SELECT * FROM spare_part_items WHERE part_id = ? AND status = 'available'", [id], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
 
 // [TEMP] Cleanup endpoint for IDs 16-292
 app.get("/spareparts-cleanup", (req, res) => {
@@ -724,77 +825,133 @@ app.post("/warehouses", authenticateToken, requireRole(["admin", "co-admin"]), (
   );
 });
 
+// DELETE warehouse (Admin/Co-Admin)
+app.delete("/warehouses/:id", authenticateToken, requireRole(["admin", "co-admin"]), (req, res) => {
+  db.run("DELETE FROM warehouses WHERE id = ?", [req.params.id], function(err) {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: "Deleted" });
+  });
+});
+
 // API สำหรับบันทึกการเคลื่อนไหวของสต็อก
 app.post(
   "/stock-movements",
   authenticateToken,
   requireRole(["admin", "co-admin", "staff"]),
   (req, res) => {
-    const { part_id, movement_type, quantity, note, department, receiver, receipt_number, due_date } = req.body;
+    const { part_id, movement_type, quantity, note, department, receiver, receipt_number, due_date, serial_ids = [], new_serials = [] } = req.body;
 
-    // Trim fields
     const dep = (department || "").trim();
+    const receipt_no = (receipt_number || "").trim();
     const rec = (receiver || "").trim();
-    const rn  = (receipt_number || "").trim();
-    const nt  = (note || "").trim();
+    const noteStr = (note || "").trim();
     const dd  = (due_date || "").trim();
 
-    // ตรวจสอบค่าที่ได้รับ
-    const validTypes = ["IN", "OUT", "BORROW", "RETURN"];
-    if (!part_id || !movement_type || !validTypes.includes(movement_type) || !Number.isInteger(quantity)) {
-      return res.status(400).json({ error: "BAD_REQUEST" });
-    }
-
-    // Role check for "IN" movement (Only admin/co-admin)
     if (movement_type === "IN") {
       if (!["admin", "co-admin"].includes(req.user.role)) {
         return res.status(403).json({ error: "FORBIDDEN_ACTION_FOR_ROLE" });
       }
     }
- 
-    // BORROW and RETURN behave like OUT/IN but with specific tracking. 
-    // We require receiver details for non-"IN" movements for better audit trails.
-    if (["OUT", "BORROW", "RETURN"].includes(movement_type)) {
-      if (!dep || !rec || !rn) return res.status(400).json({ error: "FIELDS_REQUIRED" });
+  
+    const validTypes = ["IN", "OUT", "BORROW", "RETURN"];
+    if (!part_id || !movement_type || !validTypes.includes(movement_type) || !Number.isInteger(quantity)) {
+      return res.status(400).json({ error: "BAD_REQUEST" });
     }
- 
-    // ธุรกรรมเดียว ป้องกันสต็อกติดลบ
-    db.serialize(() => {
-      db.run("BEGIN IMMEDIATE TRANSACTION");
- 
-      db.get("SELECT quantity FROM spare_parts WHERE id = ?", [part_id], (err, part) => {
-        if (err || !part) return db.run("ROLLBACK", () => res.status(404).json({ error: "PART_NOT_FOUND" }));
- 
-        const current = part.quantity;
-        let newQty = current;
- 
-        if (movement_type === "IN" || movement_type === "RETURN") {
-          newQty = current + quantity;
-        } else if (movement_type === "OUT" || movement_type === "BORROW") {
-          if (current < quantity) return db.run("ROLLBACK", () => res.status(400).json({ error: "INSUFFICIENT_STOCK" }));
-          newQty = current - quantity;
+
+    if (["OUT", "BORROW", "RETURN"].includes(movement_type)) {
+      if (!dep || !rec || !receipt_no) return res.status(400).json({ error: "FIELDS_REQUIRED" });
+    }
+
+    const new_serials_arr = Array.isArray(new_serials) ? new_serials.map(s => s.trim()).filter(s => s !== "") : [];
+
+    if (movement_type === "IN" && new_serials_arr.length > 0) {
+      const placeholders = new_serials_arr.map(() => "?").join(",");
+      db.all(`SELECT serial_no FROM spare_part_items WHERE serial_no IN (${placeholders})`, new_serials_arr, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (rows && rows.length > 0) {
+          return res.status(409).json({ error: "DUPLICATE_SERIAL", serials: rows.map(row => row.serial_no) });
         }
-
-        db.run(
-          `INSERT INTO stock_movements
-           (part_id, movement_type, quantity, note, department, receiver, receipt_number, user_id, due_date, return_status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [part_id, movement_type, quantity, nt || null, dep || null, rec || null, rn || null, req.user.userId, dd || null, movement_type === "BORROW" ? "pending" : null],
-          function (err2) {
-            if (err2) return db.run("ROLLBACK", () => res.status(500).json({ error: err2.message }));
-
-            db.run("UPDATE spare_parts SET quantity = ? WHERE id = ?", [newQty, part_id], (err3) => {
-              if (err3) return db.run("ROLLBACK", () => res.status(500).json({ error: err3.message }));
-
-              db.run("COMMIT", () => {
-                logActivity(req.user.userId, "STOCK_MOVEMENT", `${movement_type}: ${quantity} units for part ID ${part_id}. Receiver: ${rec}, Request: ${rn}`);
-                res.status(201).json({ message: "OK", movement_id: this.lastID, newQty });
-              });
-            });
-          }
-        );
+        proceedToMovement();
       });
-    });
+    } else {
+      proceedToMovement();
+    }
+
+    function proceedToMovement() {
+      db.serialize(() => {
+        db.run("BEGIN IMMEDIATE TRANSACTION");
+    
+        db.get("SELECT quantity FROM spare_parts WHERE id = ?", [part_id], (err, part) => {
+          if (err || !part) return db.run("ROLLBACK", () => res.status(404).json({ error: "PART_NOT_FOUND" }));
+    
+          const current = part.quantity;
+          let newQty = current;
+    
+          if (movement_type === "IN" || movement_type === "RETURN") {
+            newQty = current + quantity;
+          } else if (movement_type === "OUT" || movement_type === "BORROW") {
+            if (current < quantity) return db.run("ROLLBACK", () => res.status(400).json({ error: "INSUFFICIENT_STOCK" }));
+            newQty = current - quantity;
+          }
+
+          db.run(
+            `INSERT INTO stock_movements
+             (part_id, movement_type, quantity, note, department, receiver, receipt_number, user_id, due_date, return_status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [part_id, movement_type, quantity, noteStr || null, dep || null, rec || null, receipt_no || null, req.user.userId, dd || null, movement_type === "BORROW" ? "pending" : null],
+            function (err2) {
+              if (err2) return db.run("ROLLBACK", () => res.status(500).json({ error: err2.message }));
+              
+              const movementId = this.lastID;
+
+              // Function to finalize transaction after all items are processed
+              const finalizeAll = () => {
+                db.run("UPDATE spare_parts SET quantity = ? WHERE id = ?", [newQty, part_id], (err3) => {
+                  if (err3) return db.run("ROLLBACK", () => res.status(500).json({ error: err3.message }));
+                  db.run("COMMIT", () => {
+                    logActivity(req.user.userId, "STOCK_MOVEMENT", `${movement_type}: ${quantity} units for part ID ${part_id}. Receiver: ${rec}, Request: ${receipt_no}`);
+                    res.status(201).json({ message: "OK", movement_id: movementId, newQty });
+                  });
+                });
+              };
+
+              let pending = 0;
+              const checkDone = () => {
+                pending--;
+                if (pending === 0) finalizeAll();
+              };
+
+              // Process Serial IDs (OUT/BORROW/RETURN)
+              if (Array.isArray(serial_ids) && serial_ids.length > 0) {
+                pending += serial_ids.length;
+                const newStat = movement_type === "BORROW" ? "borrowed" : (movement_type === "OUT" ? "out" : "available");
+                serial_ids.forEach(sid => {
+                  db.run(`UPDATE spare_part_items SET status = ? WHERE id = ?`, [newStat, sid], () => {
+                    db.run(`INSERT INTO movement_items (movement_id, item_id) VALUES (?, ?)`, [movementId, sid], checkDone);
+                  });
+                });
+              }
+
+              // Process New Serials (IN)
+              if (movement_type === "IN" && new_serials_arr.length > 0) {
+                pending += new_serials_arr.length;
+                new_serials_arr.forEach(sn => {
+                  db.run(`INSERT INTO spare_part_items (part_id, serial_no, status) VALUES (?, ?, 'available')`, [part_id, sn.trim()], function(errX) {
+                    if (!errX && this.lastID) {
+                      db.run(`INSERT INTO movement_items (movement_id, item_id) VALUES (?, ?)`, [movementId, this.lastID], checkDone);
+                    } else {
+                      checkDone();
+                    }
+                  });
+                });
+              }
+
+              if (pending === 0) finalizeAll();
+            }
+          );
+        });
+      });
+    }
   }
 );
 // GET overdue borrows
