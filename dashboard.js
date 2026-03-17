@@ -20,6 +20,11 @@ async function loadDashboard() {
      return;
   }
 
+  // Populate Filter once if empty
+  await populateWarehouseFilter(token);
+  const warehouseId = document.getElementById("warehouse-filter")?.value || 'all';
+  const filterQuery = `?warehouseId=${warehouseId}`;
+
   // Update Welcome Section
   const welcomeMsg = document.getElementById("welcome-message");
   const icons = ["👋", "✨", "🌟", "😊", "🚀", "💻", "🛠️"];
@@ -34,17 +39,17 @@ async function loadDashboard() {
   }
 
   try {
-    console.log("Loading dashboard data...");
+    console.log(`Loading dashboard data for ${warehouseId}...`);
     // Parallel Fetching
     const [stockValueResp, lowStock, movements, warehouseValue, trends, monthlyData, expensesByWarehouse, accountData] = await Promise.all([
-      fetchData("/report/value", token),
-      fetchData("/report/low-stock", token),
-      fetchData("/report/movements3", token),
-      fetchData("/report/value-by-warehouse", token),
-      fetchData("/report/movement-trends", token),
-      fetchData("/report/monthly-comparison", token),
-      fetchData("/report/expense-by-warehouse", token),
-      fetchData("/report/withdraw-by-account", token)
+      fetchData(`/report/value${filterQuery}`, token),
+      fetchData(`/report/low-stock${filterQuery}`, token),
+      fetchData(`/report/movements3${filterQuery}`, token),
+      fetchData("/report/value-by-warehouse", token), // Keep global for chart unless preferred otherwise
+      fetchData(`/report/movement-trends${filterQuery}`, token),
+      fetchData(`/report/monthly-comparison${filterQuery}`, token),
+      fetchData(`/report/expense-by-warehouse${filterQuery}`, token),
+      fetchData(`/report/withdraw-by-account${filterQuery}`, token)
     ]);
 
     // Update Stats
@@ -77,18 +82,56 @@ async function loadDashboard() {
       if (warehouseValue) renderWarehouseChart(warehouseValue);
       if (accountData) renderAccountChart(accountData);
 
-      // Populate Specific Warehouse Expenses
-      const lpn1 = expensesByWarehouse.find(w => w.warehouse_name === 'LPN1');
-      const lpn2 = expensesByWarehouse.find(w => w.warehouse_name === 'LPN2');
-      
-      const el1 = document.getElementById("lpn1-value");
-      const el2 = document.getElementById("lpn2-value");
-      if (el1) el1.innerText = (lpn1?.total_expense || 0).toLocaleString();
-      if (el2) el2.innerText = (lpn2?.total_expense || 0).toLocaleString();
+      // Populate Expense & Out Stats
+      let totalExp = 0;
+      let totalQty = 0;
+
+      if (warehouseId === 'all') {
+        totalExp = (expensesByWarehouse || []).reduce((sum, w) => sum + (w.total_expense || 0), 0);
+        totalQty = (expensesByWarehouse || []).reduce((sum, w) => sum + (w.total_qty || 0), 0);
+      } else {
+        const wh = (expensesByWarehouse || []).find(w => String(w.warehouse_name) === String(getSelectedWarehouseName()));
+        totalExp = wh?.total_expense || 0;
+        totalQty = wh?.total_qty || 0;
+      }
+
+      const elExp = document.getElementById("total-expense");
+      const elOut = document.getElementById("total-out");
+      if (elExp) elExp.innerText = totalExp.toLocaleString();
+      if (elOut) elOut.innerText = totalQty.toLocaleString();
     }
   } catch (err) {
     console.error("Dashboard error:", err);
   }
+}
+
+let filterInitialized = false;
+async function populateWarehouseFilter(token) {
+  if (filterInitialized) return;
+  const select = document.getElementById("warehouse-filter");
+  if (!select) return;
+
+  try {
+    const warehouses = await fetchData("/warehouses", token);
+    if (Array.isArray(warehouses)) {
+      warehouses.forEach(w => {
+        const opt = document.createElement("option");
+        opt.value = w.id;
+        opt.textContent = w.name;
+        select.appendChild(opt);
+      });
+      filterInitialized = true;
+      select.addEventListener("change", () => loadDashboard());
+    }
+  } catch (err) {
+    console.error("Failed to load warehouses:", err);
+  }
+}
+
+function getSelectedWarehouseName() {
+  const select = document.getElementById("warehouse-filter");
+  if (!select) return "";
+  return select.options[select.selectedIndex].text;
 }
 
 function renderTrendChart(trends) {
@@ -235,4 +278,63 @@ function renderAccountChart(data) {
       }
     }
   });
+  loadInsights(warehouseId);
+}
+
+async function loadInsights(warehouseId) {
+  const token = localStorage.getItem("token");
+  const data = await fetchData(`/report/insights?warehouseId=${warehouseId}`, token);
+  
+  if (data) {
+    // Render Popular Parts
+    const popularTable = document.querySelector("#popular-parts-table tbody");
+    if (popularTable) {
+      popularTable.innerHTML = data.popular.map((p, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${p.part_no} - ${p.name}</td>
+          <td class="text-success">${p.total_consumed}</td>
+        </tr>
+      `).join("");
+      if (data.popular.length === 0) popularTable.innerHTML = '<tr><td colspan="3" class="text-center">No data</td></tr>';
+    }
+
+    // Render Dead Stock
+    const deadTable = document.querySelector("#dead-stock-table tbody");
+    if (deadTable) {
+      deadTable.innerHTML = data.deadStock.map(p => `
+        <tr>
+          <td>${p.part_no}</td>
+          <td>${p.name}</td>
+          <td class="text-danger">${p.last_movement ? new Date(p.last_movement).toLocaleDateString() : 'Never'}</td>
+        </tr>
+      `).join("");
+      if (data.deadStock.length === 0) deadTable.innerHTML = '<tr><td colspan="3" class="text-center">No dead stock</td></tr>';
+    }
+  }
+}
+
+async function exportInventory() {
+  const token = localStorage.getItem("token");
+  const warehouseId = document.getElementById("warehouse-filter")?.value || 'all';
+  const url = `/export/inventory?warehouseId=${warehouseId}`;
+  
+  try {
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error("Export failed");
+    
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `inventory-${warehouseId}-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (err) {
+    console.error("Export error:", err);
+    alert("Export failed: " + err.message);
+  }
 }

@@ -27,6 +27,7 @@
         <button class="btn btn-danger" onclick="setMovementType('OUT')">Stock OUT</button>
         <button class="btn" onclick="setMovementType('BORROW')" style="background-color: #f59e0b;">Borrow</button>
         <button class="btn" onclick="setMovementType('RETURN')" style="background-color: #3b82f6;">Return</button>
+        <button class="btn" onclick="setMovementType('TRANSFER')" style="background-color: #8b5cf6; color: white;" data-role-required="admin,co-admin">Transfer</button>
       </div>
       <button id="export-movements" class="btn btn-success" data-i18n="exportCSV">Export CSV</button>
     </div>
@@ -35,69 +36,84 @@
       <!-- Left side: Form -->
       <div class="card" data-role-required="admin,co-admin,staff">
         <div class="card-title" data-i18n="recordMovement">Record Stock Movement</div>
-        <form id="movement-form" class="form-grid">
+        <form id="movement-form" class="form-grid-premium-v2">
+          <!-- Row 1 -->
           <div class="stacked-form-group">
-            <label data-i18n="movementType">Movement Type:</label>
+            <label data-i18n="movementType">Movement Type</label>
             <select id="movement-type" required>
               <option value="IN" data-i18n="stockIn" data-role-required="admin,co-admin">IN</option>
               <option value="OUT" data-i18n="stockOut" selected>OUT</option>
               <option value="BORROW" data-i18n="borrow">BORROW</option>
               <option value="RETURN" data-i18n="return">RETURN</option>
+              <option value="TRANSFER" data-i18n="transfer" data-role-required="admin,co-admin">TRANSFER</option>
             </select>
           </div>
-          <div class="stacked-form-group">
-            <label data-i18n="part">Part:</label>
-            <select id="part-select" required style="margin-bottom: 8px;"></select>
-            <label data-i18n="searchPart" style="font-size: 11px; font-weight: 500; color: var(--text-muted); margin-bottom: 2px; display: block;">Search Part:</label>
-            <input type="text" id="part-search-input" data-i18n-placeholder="searchPart" style="padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; width: 100%; box-sizing: border-box; font-size: 12px;">
-          </div>
-          <div class="stacked-form-group">
-            <label data-i18n="partNo">Spare Part No:</label>
-            <input type="text" id="sparepart-no" readonly style="background-color: #f3f4f6;">
-          </div>
-          <div class="stacked-form-group">
-            <label data-i18n="qty">Quantity:</label>
-            <input type="number" id="quantity" required>
-          </div>
-          <!-- Serial Selection Area -->
-          <div id="serial-selection-group" class="stacked-form-group" style="grid-column: 1 / -1; display: none; background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 12px;">
-            <label data-i18n="selectSerials" style="font-weight: 600; margin-bottom: 8px; display: block;">Select SP no:</label>
-            <div id="serial-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 150px; overflow-y: auto; padding: 5px;">
-              <!-- Checkboxes will be injected here -->
-            </div>
-            <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
-              <span data-i18n="selectedSerials">Selected SP no</span>: <span id="selected-count">0</span>
+          
+          <div class="stacked-form-group double-span">
+            <label data-i18n="part">Search & Select Part</label>
+            <div class="search-select-row">
+              <input type="text" id="part-search-input" data-i18n-placeholder="searchPart" class="premium-search-input">
+              <select id="part-select" required></select>
             </div>
           </div>
 
-          <!-- New Serial Input Area (for Stock IN) -->
-          <div id="in-serials-group" class="stacked-form-group" style="grid-column: 1 / -1; display: none; background: var(--bg-card); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 12px;">
-            <label data-i18n="serialNumbers" style="font-weight: 600; margin-bottom: 8px; display: block;">SP no List (one per line):</label>
-            <textarea id="in-serials" rows="4" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-main);" placeholder="SN001&#10;SN002"></textarea>
-          </div>
+          <!-- Row 2 -->
           <div class="stacked-form-group">
-            <label data-i18n="warehouseLabel">Warehouse:</label>
-            <select id="reason-select" required>
-            </select>
+            <label data-i18n="partNo">Spare Part No</label>
+            <input type="text" id="sparepart-no" readonly class="readonly-input">
           </div>
-          <div class="stacked-form-group" id="due-date-group" style="display: none;">
-            <label data-i18n="dueDate">Due Date:</label>
+
+          <div class="stacked-form-group">
+            <label data-i18n="qty">Quantity</label>
+            <input type="number" id="quantity" required min="1">
+          </div>
+
+          <div class="stacked-form-group">
+            <label data-i18n="warehouseLabel">Warehouse</label>
+            <select id="reason-select" required></select>
+          </div>
+
+          <!-- Conditional Row Fields (Flow naturally) -->
+          <div class="stacked-form-group highlight-box" id="target-warehouse-group" style="display: none;">
+            <label data-i18n="targetWarehouse">Transfer to Warehouse</label>
+            <select id="target-warehouse-select"></select>
+          </div>
+
+          <div class="stacked-form-group highlight-box" id="due-date-group" style="display: none;">
+            <label data-i18n="dueDate">Expected Return Date</label>
             <input type="date" id="due-date">
           </div>
+
+          <!-- Full Width Sections -->
+          <div id="serial-selection-group" class="serial-area-v2 full-span" style="display: none;">
+            <label data-i18n="selectSerials" class="section-label">Select Individual SP No:</label>
+            <div id="serial-list" class="serial-grid-v2"></div>
+          </div>
+
+          <div id="in-serials-group" class="serial-area-v2 full-span" style="display: none;">
+            <label data-i18n="serialNumbers" class="section-label">Register New SP No List (One per line):</label>
+            <textarea id="in-serials" rows="3" placeholder="SN001&#10;SN002"></textarea>
+          </div>
+
+          <!-- Row 3: Tracking -->
           <div class="stacked-form-group">
-            <label data-i18n="receiver">Receiver:</label>
+            <label data-i18n="receiver">Receiver</label>
             <input type="text" id="receiver" required>
           </div>
+
           <div class="stacked-form-group">
-            <label data-i18n="receiptNumber">Request Number:</label>
+            <label data-i18n="receiptNumber">Request Number</label>
             <input type="text" id="receipt-number" required>
           </div>
-          <div class="stacked-form-group" style="grid-column: span 2;">
-            <label data-i18n="note">Note:</label>
-            <input type="text" id="note">
+
+          <!-- Note Span -->
+          <div class="stacked-form-group full-span">
+            <label data-i18n="note">Additional Note</label>
+            <textarea id="note" rows="2"></textarea>
           </div>
-          <div class="form-actions" style="grid-column: 1 / -1; margin-top: 8px;">
-            <button type="submit" class="btn btn-primary" data-i18n="submit">Submit</button>
+
+          <div class="form-actions-v2 full-span">
+            <button type="submit" class="btn-submit-premium" data-i18n="submit">RECORD MOVEMENT</button>
           </div>
         </form>
       </div>

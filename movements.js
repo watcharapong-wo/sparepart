@@ -8,17 +8,44 @@ function setMovementType(type) {
   }
 }
 
-document.getElementById("movement-type")?.addEventListener("change", function() {
+document.getElementById("movement-type")?.addEventListener("change", async function() {
     const dueDateGroup = document.getElementById("due-date-group");
     const dueDateInput = document.getElementById("due-date");
+    const targetWhGroup = document.getElementById("target-warehouse-group");
+    
+    const isBorrow = this.value === "BORROW";
+    const isTransfer = this.value === "TRANSFER";
+
     if (dueDateGroup) {
-      const isBorrow = this.value === "BORROW";
       dueDateGroup.style.display = isBorrow ? "flex" : "none";
-      if (!isBorrow && dueDateInput) {
-        dueDateInput.value = ""; // Clear value when switching away from BORROW
-      }
+      if (!isBorrow && dueDateInput) dueDateInput.value = "";
+    }
+
+    if (targetWhGroup) {
+      targetWhGroup.style.display = isTransfer ? "flex" : "none";
+      if (isTransfer) await loadTargetWarehouses();
     }
 });
+
+async function loadTargetWarehouses() {
+  const select = document.getElementById("target-warehouse-select");
+  if (!select || select.children.length > 0) return; // Only load once
+
+  try {
+    const token = localStorage.getItem("token");
+    const warehouses = await fetchData("/warehouses", token);
+    if (Array.isArray(warehouses)) {
+      warehouses.forEach(w => {
+        const opt = document.createElement("option");
+        opt.value = w.id;
+        opt.textContent = w.name;
+        select.appendChild(opt);
+      });
+    }
+  } catch (err) {
+    console.error("Failed to load target warehouses", err);
+  }
+}
 
 document.getElementById("part-select")?.addEventListener("change", function() {
     const selectedPart = this.options[this.selectedIndex].textContent;
@@ -168,14 +195,23 @@ function renderPartOptions(parts) {
   }
 }
 
-document.getElementById("part-search-input")?.addEventListener("input", function() {
-    const searchTerm = this.value.toLowerCase();
-    const filtered = cachedParts.filter(p => 
-        (p.name || "").toLowerCase().includes(searchTerm) || 
-        (p.part_no || "").toLowerCase().includes(searchTerm)
-    );
-    renderPartOptions(filtered);
-});
+function applyFilters() {
+  const searchTerm = document.getElementById("part-search-input")?.value.toLowerCase() || "";
+  const selectedWarehouse = document.getElementById("reason-select")?.value || "";
+
+  const filtered = cachedParts.filter(p => {
+    const matchesSearch = (p.name || "").toLowerCase().includes(searchTerm) || 
+                          (p.part_no || "").toLowerCase().includes(searchTerm);
+    const matchesWarehouse = !selectedWarehouse || (p.warehouse_name === selectedWarehouse);
+    return matchesSearch && matchesWarehouse;
+  });
+
+  renderPartOptions(filtered);
+}
+
+document.getElementById("part-search-input")?.addEventListener("input", applyFilters);
+
+document.getElementById("reason-select")?.addEventListener("change", applyFilters);
 
 async function loadReasons() {
   try {
@@ -309,7 +345,8 @@ document.getElementById("movement-form").addEventListener("submit", async functi
     }
 
     console.log("Calling postData...");
-    const data = await postData("/stock-movements", {
+    let endpoint = "/stock-movements";
+    let payload = {
         part_id, 
         movement_type, 
         quantity, 
@@ -317,15 +354,28 @@ document.getElementById("movement-form").addEventListener("submit", async functi
         receiver, 
         receipt_number, 
         note, 
-        due_date: movement_type === "BORROW" ? due_date : "", // Only send due_date for BORROW
+        due_date: movement_type === "BORROW" ? due_date : "",
         serial_ids: selectedSerials,
         new_serials: newSerials
-    }, token);
+    };
 
-    showToast("Stock movement recorded successfully!", "success");
+    if (movement_type === "TRANSFER") {
+      endpoint = "/spareparts/transfer";
+      payload = {
+        part_id,
+        target_warehouse_id: parseInt(document.getElementById("target-warehouse-select").value),
+        quantity,
+        note: note || `Transfer by ${req.user.username}`
+      };
+    }
+
+    const data = await postData(endpoint, payload, token);
+
+    showToast(movement_type === "TRANSFER" ? "Transfer successful!" : "Stock movement recorded successfully!", "success");
     document.getElementById("movement-form").reset();
     document.getElementById("serial-selection-group").style.display = "none";
     document.getElementById("in-serials-group").style.display = "none";
+    document.getElementById("target-warehouse-group").style.display = "none";
     loadParts();
     loadMovements();
   } catch (err) {
@@ -344,6 +394,7 @@ document.getElementById("movement-form").addEventListener("submit", async functi
 (async () => {
   await loadParts();
   await loadReasons();
+  applyFilters(); // Sync list with selected warehouse
   await loadMovements();
   if (typeof updateUserStatus === 'function') updateUserStatus();
 })();
@@ -353,21 +404,21 @@ if (exportBtn) {
   exportBtn.addEventListener("click", async () => {
     try {
       const token = localStorage.getItem("token");
-      const resp = await fetchData("/report/movements3", token);
-      if (resp && Array.isArray(resp)) {
-        const exportData = resp.map(item => ({
-          'Date': formatDate(item.movement_date),
-          'Type': item.movement_type,
-          'Part Name': item.part_name || item.part_no,
-          'Quantity': item.quantity,
-          'Total Value': (item.quantity || 0) * (item.price || 0),
-          'Category/Dept': item.department || "-",
-          'Due Date': formatDate(item.due_date),
-          'Receiver': item.receiver || "-",
-          'Note': item.note || "-"
-        }));
-        exportToCSV(exportData, `movement-history-${new Date().toISOString().split('T')[0]}.csv`);
-      }
+      const url = `/export/movements?warehouseId=all`; // Adjust if filter is needed
+      
+      const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error("Export failed");
+      
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `movements-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     } catch (err) {
       showToast("Export failed: " + err.message, "error");
     }

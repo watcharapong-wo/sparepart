@@ -30,7 +30,13 @@
         <h1 id="welcome-message">Welcome, User</h1>
         <p id="current-date"></p>
       </div>
-      <button onclick="loadDashboard()" class="btn btn-primary" data-i18n="reloadParts">↻ Refresh Dashboard</button>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <select id="warehouse-filter" class="form-control" style="width: auto; height: auto; padding: 10px 15px; border-radius: 8px;">
+          <option value="all" data-i18n="allWarehouses">All Warehouses</option>
+        </select>
+        <button onclick="exportInventory()" class="btn btn-success" data-i18n="exportInventory">📥 Export Inventory</button>
+        <button onclick="loadDashboard()" class="btn btn-primary" data-i18n="reloadParts">↻ Refresh Dashboard</button>
+      </div>
     </div>
 
     <div class="stats">
@@ -63,17 +69,17 @@
         </div>
       </div>
       <div class="stat-item premium">
-        <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">📦</div>
+        <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">💵</div>
         <div class="stat-info">
-          <div class="stat-title" data-i18n="lpn1TotalValue">LPN1 Total Value</div>
-          <div class="stat-value currency" id="lpn1-value">0</div>
+          <div class="stat-title" data-i18n="lpn1TotalValue">Inventory Expense</div>
+          <div class="stat-value currency" id="total-expense">0</div>
         </div>
       </div>
       <div class="stat-item premium">
-        <div class="stat-icon" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6;">📦</div>
+        <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">📦</div>
         <div class="stat-info">
-          <div class="stat-title" data-i18n="lpn2TotalValue">LPN2 Total Value</div>
-          <div class="stat-value currency" id="lpn2-value">0</div>
+          <div class="stat-title" data-i18n="lpn1TotalOut">Units Withdrawn</div>
+          <div class="stat-value success" id="total-out">0</div>
         </div>
       </div>
     </div>
@@ -132,6 +138,45 @@
           </table>
         </div>
       </div>
+
+      <!-- Inventory Insights Section -->
+    <div class="card full-width" style="margin-top: 24px;">
+      <div class="card-title" data-i18n="inventoryInsights">Inventory Insights & Analytics</div>
+      <div class="dashboard-grid">
+        <div class="insight-column">
+          <h4 data-i18n="popularParts" style="font-size: 14px; margin-bottom: 12px; color: var(--primary);">Popular Consumed Parts</h4>
+          <div class="table-responsive">
+            <table id="popular-parts-table">
+              <thead>
+                <tr>
+                  <th data-i18n="no">No</th>
+                  <th data-i18n="part">Part Name</th>
+                  <th data-i18n="timesConsumed">Units Used</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="insight-column">
+          <h4 data-i18n="deadStock" style="font-size: 14px; margin-bottom: 12px; color: var(--danger);">Inactive Stock</h4>
+          <div class="table-responsive">
+            <table id="dead-stock-table">
+              <thead>
+                <tr>
+                  <th data-i18n="partNo">Part No</th>
+                  <th data-i18n="name">Name</th>
+                  <th data-i18n="lastMovement">Last Movement</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
     </div>
 
   </div>
