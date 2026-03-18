@@ -1,5 +1,15 @@
-window.API_URL = `${window.location.protocol}//${window.location.hostname}:4003`;
+window.API_URL = `${window.location.protocol}//${window.location.hostname}:${window.location.port}`;
 const API_URL = window.API_URL;
+
+function handleAuthFailure(status) {
+  if (status !== 401 && status !== 403) return;
+  localStorage.removeItem("token");
+  localStorage.removeItem("role");
+  localStorage.removeItem("username");
+  if (!window.location.pathname.endsWith("login.html")) {
+    window.location.href = "login.html";
+  }
+}
 
 async function fetchData(endpoint, token) {
   try {
@@ -11,6 +21,7 @@ async function fetchData(endpoint, token) {
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      handleAuthFailure(response.status);
       throw new Error(errorData.error || `Fetch failed: ${response.status}`);
     }
     return response.json();
@@ -27,6 +38,7 @@ async function deleteData(endpoint, token) {
       headers: { Authorization: `Bearer ${token}` }
     });
     const result = await response.json().catch(() => ({}));
+    handleAuthFailure(response.status);
     if (!response.ok) throw new Error(result.error || `DELETE failed: ${response.status}`);
     return result;
   } catch (err) {
@@ -46,6 +58,7 @@ async function postData(endpoint, data, token) {
       body: JSON.stringify(data)
     });
     const result = await response.json().catch(() => ({}));
+    handleAuthFailure(response.status);
     if (!response.ok) throw new Error(result.error || `POST failed: ${response.status}`);
     return result;
   } catch (err) {
@@ -65,6 +78,7 @@ async function putData(endpoint, data, token) {
       body: JSON.stringify(data)
     });
     const result = await response.json().catch(() => ({}));
+    handleAuthFailure(response.status);
     if (!response.ok) throw new Error(result.error || `PUT failed: ${response.status}`);
     return result;
   } catch (err) {

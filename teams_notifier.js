@@ -14,7 +14,7 @@ const url = require('url');
  * @param {string} params.serialNos - List of serial numbers (SP no)
  * @param {string} params.note - Additional note
  */
-function sendTeamsNotification({ type, partName, quantity, user, receiver, department, warehouse, serialNos, note }) {
+function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, department, warehouse, serialNos, spNo, note }) {
   const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
   if (!webhookUrl) {
     console.error('[TEAMS] Webhook URL not found in environment variables');
@@ -26,10 +26,14 @@ function sendTeamsNotification({ type, partName, quantity, user, receiver, depar
     'OUT': '📤',
     'BORROW': '📂',
     'RETURN': '🔄',
+    'TRANSFER': '🔁',
     'NEW': '📦',
     'LOW_STOCK': '⚠️',
     'REMINDER': '⏰'
   }[type] || '🔔';
+
+  const qtyValue = quantity ?? qty;
+  const serialValue = serialNos ?? spNo;
 
   const titleText = type === 'LOW_STOCK' 
     ? `⚠️ CRITICAL: Low Stock Alert!` 
@@ -60,12 +64,12 @@ function sendTeamsNotification({ type, partName, quantity, user, receiver, depar
               type: "FactSet",
               facts: [
                 { title: "Part:", value: String(partName || '-') },
-                { title: "Qty:", value: String(quantity || '0') },
+                { title: "Qty:", value: String(qtyValue || '0') },
                 { title: "Warehouse:", value: String(warehouse || '-') },
                 { title: "By:", value: String(user || 'System') },
                 { title: "Receiver:", value: String(receiver || '-') },
                 { title: "Dept:", value: String(department || '-') },
-                { title: "SP No:", value: String(serialNos || '-') },
+                { title: "SP No:", value: String(serialValue || '-') },
                 { title: "Note:", value: String(note || '-') },
                 { title: "Time:", value: String(timestamp) }
               ]

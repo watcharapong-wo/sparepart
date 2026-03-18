@@ -20,7 +20,9 @@ BEGIN
         name NVARCHAR(255) NOT NULL,
         description NVARCHAR(MAX),
         quantity INT NOT NULL,
-        price DECIMAL(18,2)
+        price DECIMAL(18,2),
+        unit_type VARCHAR(20),
+        conversion_rate INT DEFAULT 1
     );
 END
 

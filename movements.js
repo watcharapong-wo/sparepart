@@ -1,10 +1,97 @@
+function setSectionVisible(element, visible, displayValue = "block") {
+  if (!element) return;
+  element.hidden = !visible;
+  element.style.display = visible ? displayValue : "none";
+}
+
+function i18nText(key, fallback = "") {
+  if (typeof translations === "undefined" || typeof currentLang === "undefined") {
+    return fallback;
+  }
+  return translations?.[currentLang]?.[key] || fallback;
+}
+
+// แสดงข้อมูลหน่วย/ชิ้น เมื่อ part เป็นประเภท box/pack
+function updatePieceStockInfo(part) {
+  const infoDiv = document.getElementById("piece-stock-info");
+  const qtyLabel = document.getElementById("quantity-label");
+  const qtyInput = document.getElementById("quantity");
+  const movementType = document.getElementById("movement-type")?.value;
+
+  if (!infoDiv) return;
+
+  if (!part) {
+    setSectionVisible(infoDiv, false);
+    if (qtyLabel) {
+      qtyLabel.textContent = i18nText("qty", "Quantity");
+      qtyLabel.setAttribute("data-i18n", "qty");
+    }
+    if (qtyInput) qtyInput.removeAttribute("max");
+    return;
+  }
+
+  const isPackUnit = part.unit_type === "box" || part.unit_type === "pack";
+  const convRate = Math.max(1, Number(part.conversion_rate) || 1);
+  const pieceStock = Number(part.piece_stock) || 0;
+  const boxStock = Number(part.quantity) || 0;
+
+  if (isPackUnit && movementType !== "TRANSFER") {
+    if (movementType === "IN") {
+      setSectionVisible(infoDiv, true, "block");
+      infoDiv.textContent = i18nText("packInfoCurrent", "Current").replace("{boxes}", boxStock).replace("{unit}", part.unit_type).replace("{pieces}", pieceStock);
+      if (qtyLabel) {
+        qtyLabel.textContent = part.unit_type === "box"
+          ? i18nText("qtyAddBox", "Boxes to add")
+          : i18nText("qtyAddPack", "Packs to add");
+      }
+      if (qtyInput) { qtyInput.removeAttribute("max"); qtyInput.min = "1"; }
+    } else {
+      // OUT / BORROW / RETURN — ระบุเป็น "ชิ้น"
+      setSectionVisible(infoDiv, true, "block");
+      infoDiv.textContent = i18nText("packInfoRemaining", "Remaining").replace("{pieces}", pieceStock).replace("{boxes}", boxStock).replace("{unit}", part.unit_type).replace("{rate}", convRate);
+      if (qtyLabel) { qtyLabel.textContent = i18nText("qtyRequestedPiece", "Requested pieces"); }
+      if (qtyInput) { qtyInput.max = String(pieceStock); qtyInput.min = "1"; }
+    }
+  } else {
+    setSectionVisible(infoDiv, false);
+    if (qtyLabel) {
+      qtyLabel.textContent = i18nText("qty", "Quantity");
+      qtyLabel.setAttribute("data-i18n", "qty");
+    }
+    if (qtyInput) qtyInput.removeAttribute("max");
+  }
+}
+
 function setMovementType(type) {
   const form = document.getElementById("movement-form");
   const el = document.getElementById("movement-type");
   if (form && el) {
-    form.reset(); // Reset all fields
-    el.value = type; // Restore the desired type
-    el.dispatchEvent(new Event("change")); // Trigger UI updates (like Due Date visibility)
+    form.reset();
+    el.value = type;
+
+    // ซ่อน serial groups ทุกครั้งเมื่อเปลี่ยน type
+    const serialGroup = document.getElementById("serial-selection-group");
+    const inSerialGroup = document.getElementById("in-serials-group");
+    const targetWhGroup = document.getElementById("target-warehouse-group");
+    const dueDateGroup = document.getElementById("due-date-group");
+    const dueDateInput = document.getElementById("due-date");
+    setSectionVisible(serialGroup, false);
+    setSectionVisible(inSerialGroup, false);
+    setSectionVisible(targetWhGroup, type === "TRANSFER", "flex");
+    setSectionVisible(dueDateGroup, type === "BORROW", "flex");
+    if (dueDateInput && type !== "BORROW") dueDateInput.value = "";
+
+    // อัปเดต piece-stock info & quantity label ตาม movement type
+    const partId = document.getElementById("part-select")?.value;
+    if (partId) {
+      const currentPart = cachedParts.find(p => String(p.id) === String(partId));
+      updatePieceStockInfo(currentPart || null);
+      fetchSerials(partId);
+    } else {
+      updatePieceStockInfo(null);
+    }
+
+    if (type === "TRANSFER") loadTargetWarehouses();
   }
 }
 
@@ -17,13 +104,20 @@ document.getElementById("movement-type")?.addEventListener("change", async funct
     const isTransfer = this.value === "TRANSFER";
 
     if (dueDateGroup) {
-      dueDateGroup.style.display = isBorrow ? "flex" : "none";
+      setSectionVisible(dueDateGroup, isBorrow, "flex");
       if (!isBorrow && dueDateInput) dueDateInput.value = "";
     }
 
     if (targetWhGroup) {
-      targetWhGroup.style.display = isTransfer ? "flex" : "none";
+      setSectionVisible(targetWhGroup, isTransfer, "flex");
       if (isTransfer) await loadTargetWarehouses();
+    }
+
+    // อัปเดต piece-stock info เมื่อ movement type เปลี่ยน
+    const partId = document.getElementById("part-select")?.value;
+    if (partId) {
+      const currentPart = cachedParts.find(p => String(p.id) === String(partId));
+      updatePieceStockInfo(currentPart || null);
     }
 });
 
@@ -48,56 +142,87 @@ async function loadTargetWarehouses() {
 }
 
 document.getElementById("part-select")?.addEventListener("change", function() {
-    const selectedPart = this.options[this.selectedIndex].textContent;
-    const partNo = selectedPart.split(" - ")[0];
+    const partId = this.value;
     const sparepartNoInput = document.getElementById("sparepart-no");
-    if (sparepartNoInput) sparepartNoInput.value = partNo;
-    fetchSerials(this.value);
+    // หา part_no จาก cachedParts
+    const part = cachedParts.find(p => String(p.id) === String(partId));
+    if (sparepartNoInput && part) sparepartNoInput.value = part.partType || part.part_no || "";
+  syncWarehouseByPart(part || null);
+    // อัปเดต unit-type, conversion-rate และ piece-stock info จาก part ที่เลือก
+    if (part) {
+      const unitTypeEl = document.getElementById("unit-type");
+      const convRateEl = document.getElementById("conversion-rate");
+      if (unitTypeEl) unitTypeEl.value = part.unit_type || "piece";
+      if (convRateEl) convRateEl.value = part.conversion_rate || 1;
+      updatePieceStockInfo(part);
+    } else {
+      updatePieceStockInfo(null);
+    }
+    fetchSerials(partId);
 });
 
 async function fetchSerials(partId) {
   const serialGroup = document.getElementById("serial-selection-group");
   const inSerialGroup = document.getElementById("in-serials-group");
   const serialList = document.getElementById("serial-list");
+  const serialWarning = document.getElementById("serial-warning");
   const qtyInput = document.getElementById("quantity");
   const type = document.getElementById("movement-type").value;
+  const part = cachedParts.find(p => String(p.id) === String(partId));
+  const isPackUnit = part && (part.unit_type === "box" || part.unit_type === "pack");
+  const usesAutoPackFlow = Boolean(isPackUnit && (type === "OUT" || type === "BORROW" || type === "RETURN"));
 
   if (!partId) {
-    if (serialGroup) serialGroup.style.display = "none";
-    if (inSerialGroup) inSerialGroup.style.display = "none";
+    setSectionVisible(serialGroup, false);
+    setSectionVisible(inSerialGroup, false);
     return;
   }
 
   // Handle Stock IN separate logic
   if (type === "IN") {
-    if (serialGroup) serialGroup.style.display = "none";
+    setSectionVisible(serialGroup, false);
     if (inSerialGroup) {
-      inSerialGroup.style.display = "block";
+      setSectionVisible(inSerialGroup, true, "block");
       qtyInput.readOnly = true;
       updateInSerialsCount();
     }
     return;
   } else {
-    if (inSerialGroup) inSerialGroup.style.display = "none";
+    setSectionVisible(inSerialGroup, false);
   }
 
   try {
     const token = localStorage.getItem("token");
     const serials = await fetchData(`/spareparts/${partId}/serials`, token);
-    
+    setSectionVisible(serialGroup, true, "block");
     if (serials && serials.length > 0) {
-      serialGroup.style.display = "block";
-      serialList.innerHTML = serials.map(s => `
-        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 13px; background: var(--bg-main); padding: 5px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
-          <input type="checkbox" name="serial" value="${s.id}" onchange="updateSelectedSerialsCount()">
-          ${s.serial_no}
-        </label>
-      `).join("");
-      qtyInput.readOnly = true;
-      qtyInput.value = 0;
+      if (usesAutoPackFlow) {
+        serialList.innerHTML = serials.map(s => `
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; background: var(--bg-main); padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
+            <span>${s.serial_no}</span>
+            <strong>${Number(s.remaining_qty) || 0}/${Number(s.initial_qty) || 0}</strong>
+          </div>
+        `).join("");
+        qtyInput.readOnly = false;
+        if (!qtyInput.value || Number(qtyInput.value) < 1) qtyInput.value = "";
+        serialWarning.textContent = i18nText("packAutoAllocateHint", "System will consume the current SP no until empty, then continue with the next one.");
+        setSectionVisible(serialWarning, true, "block");
+      } else {
+        serialList.innerHTML = serials.map(s => `
+          <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 13px; background: var(--bg-main); padding: 5px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
+            <input type="checkbox" name="serial" value="${s.id}" onchange="updateSelectedSerialsCount()">
+            ${s.serial_no}
+          </label>
+        `).join("");
+        qtyInput.readOnly = true;
+        qtyInput.value = 0;
+        setSectionVisible(serialWarning, false);
+      }
     } else {
-      serialGroup.style.display = "none";
+      serialList.innerHTML = "";
       qtyInput.readOnly = false;
+      serialWarning.textContent = i18nText("noAvailableSpNo", "No available SP no for this part.");
+      setSectionVisible(serialWarning, true, "block");
     }
     updateSelectedSerialsCount();
   } catch (err) {
@@ -184,7 +309,7 @@ function renderPartOptions(parts) {
     parts.forEach(part => {
       const option = document.createElement("option");
       option.value = part.id;
-      option.textContent = `${part.name} - ${part.part_no}${part.description ? ' - ' + part.description : ''} (In stock: ${part.quantity})`;
+      option.textContent = `${part.name} - ${part.partType || part.part_no}${part.description ? ' - ' + part.description : ''} (In stock: ${part.quantity})`;
       select.appendChild(option);
     });
     // Trigger change to update Spare Part No field
@@ -195,13 +320,34 @@ function renderPartOptions(parts) {
   }
 }
 
+function syncWarehouseByPart(part) {
+  const warehouseSelect = document.getElementById("reason-select");
+  if (!warehouseSelect) return;
+  if (!part || !part.warehouse_name) {
+    warehouseSelect.value = "";
+    warehouseSelect.disabled = false;
+    warehouseSelect.title = "";
+    return;
+  }
+
+  const normalizedWarehouse = String(part.warehouse_name || "").trim();
+  const matchingOption = Array.from(warehouseSelect.options).find(
+    (o) => String(o.value || "").trim() === normalizedWarehouse
+  );
+
+  // Auto-fill from selected part, but keep it editable so users can switch to LPN2/LPN1 manually.
+  warehouseSelect.value = matchingOption ? matchingOption.value : "";
+  warehouseSelect.disabled = false;
+  warehouseSelect.title = matchingOption ? "Auto-filled from selected part (editable)" : "";
+}
+
 function applyFilters() {
   const searchTerm = document.getElementById("part-search-input")?.value.toLowerCase() || "";
   const selectedWarehouse = document.getElementById("reason-select")?.value || "";
 
   const filtered = cachedParts.filter(p => {
     const matchesSearch = (p.name || "").toLowerCase().includes(searchTerm) || 
-                          (p.part_no || "").toLowerCase().includes(searchTerm);
+                          (p.partType || p.part_no || "").toLowerCase().includes(searchTerm);
     const matchesWarehouse = !selectedWarehouse || (p.warehouse_name === selectedWarehouse);
     return matchesSearch && matchesWarehouse;
   });
@@ -220,6 +366,10 @@ async function loadReasons() {
     const select = document.getElementById("reason-select");
     if (!select) return;
     select.innerHTML = "";
+    const allOption = document.createElement("option");
+    allOption.value = "";
+    allOption.textContent = "All Warehouses";
+    select.appendChild(allOption);
     if (Array.isArray(data)) {
       data.forEach(w => {
         const option = document.createElement("option");
@@ -227,6 +377,12 @@ async function loadReasons() {
         option.textContent = w.name;
         select.appendChild(option);
       });
+    }
+
+    const selectedPartId = document.getElementById("part-select")?.value;
+    if (selectedPartId) {
+      const currentPart = cachedParts.find((p) => String(p.id) === String(selectedPartId));
+      syncWarehouseByPart(currentPart || null);
     }
   } catch (err) {
     console.error("Failed to load warehouses for movement", err);
@@ -238,7 +394,7 @@ async function loadMovements() {
     const token = localStorage.getItem("token");
     const tbody = document.getElementById("movements-table")?.getElementsByTagName("tbody")[0];
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="8" class="table-loading-state"><div class="spinner"></div>Loading history...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" class="table-loading-state"><div class="spinner"></div>Loading history...</td></tr>`;
 
     allMovements = await fetchData("/report/movements3", token);
     displayMovements(allMovements);
@@ -263,7 +419,7 @@ function displayMovements(data) {
                           m.movement_type === 'RETURN' ? 'text-info' : 'text-primary';
         typeCell.innerHTML = `<span class="${typeClass}">${m.movement_type}</span>`;
         row.insertCell(2).textContent = m.part_name || "-";
-        row.insertCell(3).textContent = m.part_no || "-";
+        row.insertCell(3).textContent = m.partType || m.part_no || "-";
         row.insertCell(4).textContent = m.quantity;
         
         // Value Cell
@@ -274,17 +430,18 @@ function displayMovements(data) {
         row.insertCell(7).textContent = formatDate(m.due_date);
         row.insertCell(8).textContent = m.receiver || "-";
         row.insertCell(9).textContent = m.receipt_number || "-";
-        row.insertCell(10).textContent = m.note || "-";
+        row.insertCell(10).textContent = m.serial_usage || "-";
+        row.insertCell(11).textContent = m.note || "-";
       });
     } else {
-        tbody.innerHTML = `<tr><td colspan="10" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>No results found.</p></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="12" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>No results found.</p></td></tr>`;
     }
 }
 
 function filterMovements(term) {
     const filtered = allMovements.filter(m => {
         const name = (m.part_name || "").toLowerCase();
-        const no = (m.part_no || "").toLowerCase();
+        const no = (m.partType || m.part_no || "").toLowerCase();
         return name.includes(term) || no.includes(term);
     });
     displayMovements(filtered);
@@ -365,25 +522,23 @@ document.getElementById("movement-form").addEventListener("submit", async functi
         part_id,
         target_warehouse_id: parseInt(document.getElementById("target-warehouse-select").value),
         quantity,
-        note: note || `Transfer by ${req.user.username}`
+        note: note || `Transfer by ${localStorage.getItem("username") || "user"}`
       };
     }
 
-    const data = await postData(endpoint, payload, token);
+    await postData(endpoint, payload, token);
 
     showToast(movement_type === "TRANSFER" ? "Transfer successful!" : "Stock movement recorded successfully!", "success");
     document.getElementById("movement-form").reset();
-    document.getElementById("serial-selection-group").style.display = "none";
-    document.getElementById("in-serials-group").style.display = "none";
-    document.getElementById("target-warehouse-group").style.display = "none";
-    loadParts();
-    loadMovements();
+    setSectionVisible(document.getElementById("serial-selection-group"), false);
+    setSectionVisible(document.getElementById("in-serials-group"), false);
+    setSectionVisible(document.getElementById("target-warehouse-group"), false);
+    await loadParts();
+    await loadMovements();
   } catch (err) {
     console.error("Submission failed ERROR:", err);
     if (err.status === 409) {
-      const errorData = await err.response.json();
-      const dupList = Array.isArray(errorData.serials) ? errorData.serials.join(", ") : errorData.serial || "Unknown";
-      showToast(`Duplicate SP no: ${dupList}`, "error");
+      showToast("Duplicate serial number detected", "error");
     } else {
       showToast("An error occurred: " + err.message, "error");
     }
@@ -391,31 +546,47 @@ document.getElementById("movement-form").addEventListener("submit", async functi
 });
 
 // Initial Load
-(async () => {
+async function initMovementsPage() {
   await loadParts();
   await loadReasons();
-  applyFilters(); // Sync list with selected warehouse
+  applyFilters();
   await loadMovements();
-  if (typeof updateUserStatus === 'function') updateUserStatus();
-})();
+
+  const currentType = document.getElementById("movement-type")?.value || "OUT";
+  const dueDateGroup = document.getElementById("due-date-group");
+  const targetWhGroup = document.getElementById("target-warehouse-group");
+  setSectionVisible(dueDateGroup, currentType === "BORROW", "flex");
+  setSectionVisible(targetWhGroup, currentType === "TRANSFER", "flex");
+
+  if (typeof updateUserStatus === "function") updateUserStatus();
+}
+
+initMovementsPage();
+
+// Refresh เมื่อกลับมาที่หน้านี้ (bfcache)
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) {
+    initMovementsPage();
+  }
+});
 
 const exportBtn = document.getElementById("export-movements");
 if (exportBtn) {
   exportBtn.addEventListener("click", async () => {
     try {
       const token = localStorage.getItem("token");
-      const url = `/export/movements?warehouseId=all`; // Adjust if filter is needed
-      
+      const url = `/export/movements?warehouseId=all`;
+
       const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
       if (!response.ok) throw new Error("Export failed");
-      
+
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = downloadUrl;
-      a.download = `movements-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `movements-${new Date().toISOString().split("T")[0]}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();

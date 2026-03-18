@@ -69,7 +69,7 @@ async function loadDashboard() {
             <td>${formatDate(m.movement_date)}</td>
             <td>${m.movement_type === 'OUT' ? 'OUT' : 'IN'} ${m.quantity}</td>
             <td>${m.part_name || '-'}</td>
-            <td>${m.part_no || '-'}</td>
+            <td>${m.partType || m.part_no || '-'}</td>
             <td>${m.note || m.department || m.receiver || '-'}</td>
             <td><span class="badge" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; font-size: 11px; padding: 2px 6px; border-radius: 4px;">${m.username || '-'}</span></td>
           </tr>
@@ -292,7 +292,7 @@ async function loadInsights(warehouseId) {
       popularTable.innerHTML = data.popular.map((p, i) => `
         <tr>
           <td>${i + 1}</td>
-          <td>${p.part_no} - ${p.name}</td>
+          <td>${p.partType || p.part_no} - ${p.name}</td>
           <td class="text-success">${p.total_consumed}</td>
         </tr>
       `).join("");
@@ -304,7 +304,7 @@ async function loadInsights(warehouseId) {
     if (deadTable) {
       deadTable.innerHTML = data.deadStock.map(p => `
         <tr>
-          <td>${p.part_no}</td>
+          <td>${p.partType || p.part_no}</td>
           <td>${p.name}</td>
           <td class="text-danger">${p.last_movement ? new Date(p.last_movement).toLocaleDateString() : 'Never'}</td>
         </tr>

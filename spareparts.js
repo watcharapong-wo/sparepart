@@ -76,6 +76,41 @@ async function loadSpareParts() {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderSerialSummaryHtml(summary) {
+  const raw = String(summary || "").trim();
+  if (!raw) return "-";
+  const lines = raw.split("\n").filter(Boolean);
+  if (lines.length === 0) return "-";
+
+  const items = lines.map((line) => {
+    const safeLine = escapeHtml(line);
+    const match = line.match(/^(.*)\[(\d+)\/(\d+)\]$/);
+    if (!match) {
+      return `<span class="serial-chip serial-chip-neutral">${safeLine}</span>`;
+    }
+
+    const serialNo = escapeHtml(match[1].trim());
+    const remaining = Number(match[2]);
+    const initial = Number(match[3]);
+    let stateClass = "serial-chip-available";
+    if (remaining <= 0) stateClass = "serial-chip-consumed";
+    else if (remaining < initial) stateClass = "serial-chip-partial";
+
+    return `<span class="serial-chip ${stateClass}">${serialNo} <strong>${remaining}/${initial}</strong></span>`;
+  });
+
+  return `<div class="serial-summary-list">${items.join("")}</div>`;
+}
+
 function renderSparePartsTable(data) {
   const tbody = document.querySelector("#spareparts-table tbody");
   if (tbody) {
@@ -84,13 +119,15 @@ function renderSparePartsTable(data) {
       data.forEach((p, index) => {
         const tr = document.createElement("tr");
         tr.id = `row-${p.id}`; // Add unique ID to row
+        const serialSummary = renderSerialSummaryHtml(p.serial_summary);
         tr.innerHTML = `
           <td>${index + 1}</td>
           <td>${p.id}</td>
           <td>${p.name}</td>
-          <td>${p.partType || p.part_no}</td>
+          <td>${p.part_no}</td>
           <td>${p.description || ""}</td>
           <td>${p.quantity}</td>
+          <td class="serial-status-cell">${serialSummary}</td>
           <td class="cell-price">${p.price ?? ""}</td>
           <td>${p.warehouse_name || "-"}</td>
           <td>
@@ -103,7 +140,7 @@ function renderSparePartsTable(data) {
         tbody.appendChild(tr);
       });
     } else {
-      tbody.innerHTML = `<tr><td colspan="9" class="table-empty-state"><i style="color:var(--text-muted)">ℹ️</i> ${translations[currentLang].noData || "No data found"}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" class="table-empty-state"><i style="color:var(--text-muted)">ℹ️</i> ${translations[currentLang].noData || "No data found"}</td></tr>`;
     }
     if (typeof applyTranslations === "function") applyTranslations();
     if (typeof checkPermissions === "function") checkPermissions();
@@ -124,9 +161,10 @@ function editPart(id) {
     <td>${index + 1}</td>
     <td>${part.id}</td>
     <td><input type="text" id="edit-name-${id}" value="${part.name}" style="width:150px;"></td>
-    <td><input type="text" id="edit-partType-${id}" value="${part.partType || part.part_no}" style="width:100px;"></td>
+    <td><input type="text" id="edit-part_no-${id}" value="${part.part_no}" style="width:100px;"></td>
     <td><input type="text" id="edit-desc-${id}" value="${part.description || ""}" style="width:200px;"></td>
     <td><input type="number" id="edit-qty-${id}" value="${part.quantity}" style="width:60px;"></td>
+    <td class="serial-status-cell">${renderSerialSummaryHtml(part.serial_summary)}</td>
     <td><input type="number" id="edit-price-${id}" value="${part.price ?? 0}" style="width:80px;"></td>
     <td>${part.warehouse_name || "-"}</td>
     <td>
@@ -230,6 +268,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const name = document.getElementById("add-name").value;
       const description = document.getElementById("add-description").value;
       const quantity = parseInt(document.getElementById("add-quantity").value) || 0;
+      const unit_type = document.getElementById("add-unit-type")?.value || "piece";
+      const conversion_rate = parseFloat(document.getElementById("add-conversion-rate")?.value) || 1;
       const price = parseFloat(document.getElementById("add-price").value) || 0;
       const warehouseId = document.getElementById("add-warehouse-select").value;
 
@@ -238,6 +278,11 @@ document.addEventListener("DOMContentLoaded", () => {
       
       if (serials.length === 0) {
         showToast("Please enter at least one SP no", "error");
+        return;
+      }
+
+      if ((unit_type === "box" || unit_type === "pack") && serials.length !== quantity) {
+        showToast("For box/pack, SP no count must equal quantity", "error");
         return;
       }
 
@@ -254,7 +299,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const token = localStorage.getItem("token");
-      await postData("/spareparts", { part_no, name, description, quantity, price, warehouseId, serials }, token);
+      await postData("/spareparts", { part_no, name, description, quantity, unit_type, conversion_rate, price, warehouseId, serials }, token);
       this.reset();
       showToast(translations[currentLang].saveSuccess || "Saved successfully", "success");
       loadSpareParts();
@@ -277,6 +322,8 @@ document.addEventListener("DOMContentLoaded", () => {
       Name: item.name,
       Description: item.description,
       Quantity: item.quantity,
+      UnitType: item.unit_type || "piece",
+      ConversionRate: item.conversion_rate || 1,
       Price: item.price,
       Warehouse: item.warehouse_name || "-"
     }));
