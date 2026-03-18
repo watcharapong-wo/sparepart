@@ -37,26 +37,52 @@ Ensure you have [Node.js](https://nodejs.org/) installed on your machine.
 ### Installation
 
 1. Clone this repository:
+
    ```bash
    git clone https://github.com/watcharapong-wo/sparepart.git
    cd sparepart
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    ```
+
    *(This will install express, sqlite3, bcryptjs, cors, jsonwebtoken, etc., based on `package.json`)*
 
 3. Start the server:
+
    ```bash
    node index.js
    ```
 
-4. Access the application:
-   Open your browser and navigate to `http://localhost:3000` (or the port specified in your console).
+   Or, for Windows, start it without opening a terminal window:
+
+   ```powershell
+   wscript.exe .\run_server_hidden.vbs
+   ```
+
+   This hidden launcher checks port `5000` first and will not start a duplicate server.
+
+4. To start automatically when you sign in to Windows:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\register_autostart.ps1
+   ```
+
+   To remove the autostart task later:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\unregister_autostart.ps1
+   ```
+
+5. Access the application:
+
+   Open your browser and navigate to `http://localhost:5000`.
 
 ### Default Login
+
 - If the database is freshly initialized, check your `index.js` or database seed files for default administrator credentials.
 
 ## 📁 Project Structure
@@ -73,4 +99,5 @@ Ensure you have [Node.js](https://nodejs.org/) installed on your machine.
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
+
 This project is proprietary and developed by Watcharapong W. (IT Eng.) for Hana Microelectronics Public Co., Ltd.
