@@ -68,13 +68,15 @@ Ensure you have [Node.js](https://nodejs.org/) installed on your machine.
 4. To start automatically when you sign in to Windows:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\register_autostart.ps1
+   powershell -ExecutionPolicy Bypass -File .\register_autostart_admin.ps1
    ```
+
+   This will request administrator privileges and create a Windows Scheduled Task that starts the server automatically at logon.
 
    To remove the autostart task later:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\unregister_autostart.ps1
+   powershell -ExecutionPolicy Bypass -File .\unregister_autostart_admin.ps1
    ```
 
 5. Access the application:
