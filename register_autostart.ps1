@@ -1,14 +1,23 @@
+$taskName = "SparepartServer"
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$batchFile = Join-Path $scriptRoot "register_autostart.bat"
+$launcher = Join-Path $scriptRoot "run_server_hidden.vbs"
 
-if (-not (Test-Path $batchFile)) {
-    throw "Batch file not found: $batchFile"
+if (-not (Test-Path $launcher)) {
+    throw "Launcher not found: $launcher"
 }
 
-& $batchFile
-
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to register scheduled task (batch exit code: $LASTEXITCODE)"
+try {
+    # Create a scheduled task action
+    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$launcher`""
+    
+    # Create a trigger for logon
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    
+    # Register the task
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -RunLevel Limited -Force -ErrorAction Stop
+    
+    Write-Output "[OK] Registered scheduled task: $taskName"
+    Write-Output "Server will start automatically when you sign in to Windows."
+} catch {
+    throw "Failed to register scheduled task: $($_.Exception.Message)"
 }
-
-Write-Output "Scheduled task registration completed."

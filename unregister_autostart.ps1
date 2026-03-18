@@ -1,14 +1,8 @@
 $taskName = "SparepartServer"
-$schtasks = Join-Path $env:WINDIR "System32\schtasks.exe"
 
-if (-not (Test-Path $schtasks)) {
-    throw "schtasks.exe not found: $schtasks"
+try {
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
+    Write-Output "[OK] Deleted scheduled task: $taskName"
+} catch {
+    throw "Failed to delete scheduled task: $($_.Exception.Message)"
 }
-
-& $schtasks /Delete /F /TN $taskName
-
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to delete scheduled task $taskName"
-}
-
-Write-Output "Deleted scheduled task: $taskName"
