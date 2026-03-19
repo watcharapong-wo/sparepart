@@ -185,7 +185,6 @@ function editPart(id) {
   `;
   tr.parentNode.insertBefore(actionRow, tr.nextSibling);
 }
-}
 
 function cancelEdit(id) {
   renderSparePartsTable(sparePartsCache);
