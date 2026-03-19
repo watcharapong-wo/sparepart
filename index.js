@@ -1239,11 +1239,11 @@ const server = app.listen(PORT, "0.0.0.0", () => {
 
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {
-    console.warn(`⚠️ PORT ${PORT} is already in use. Existing server is likely running, so this process will exit gracefully.`);
+    console.log(`PORT ${PORT} is already in use. Server already running.`);
     process.exit(0);
     return;
   }
-  console.error("Server start failed:", e.message);
+  console.log("Server start failed:", e.message);
   process.exit(1);
 });
 process.stdin.resume();
