@@ -607,6 +607,26 @@ app.get("/report/insights", authenticateToken, (req, res) => {
   });
 });
 
+app.get("/report/top-parts-by-warehouse", authenticateToken, (req, res) => {
+  const warehouseId = req.query.warehouseId;
+  
+  if (!warehouseId || warehouseId === 'all') {
+    return res.json([]);
+  }
+  
+  const sql = `SELECT TOP 5 p.id, p.part_no, p.name, p.quantity, ISNULL(SUM(m.quantity), 0) as total_consumed 
+               FROM spare_parts p 
+               LEFT JOIN stock_movements m ON p.id = m.part_id AND m.movement_type IN ('OUT', 'BORROW')
+               WHERE p.warehouseId = ?
+               GROUP BY p.id, p.part_no, p.name, p.quantity
+               ORDER BY total_consumed DESC`;
+  
+  db.all(sql, [warehouseId], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows || []);
+  });
+});
+
 if (dbConfig.dbClient === "sqlite") {
   db.all("PRAGMA table_info(spare_parts)", [], (err, cols) => {
     if (!cols) return;

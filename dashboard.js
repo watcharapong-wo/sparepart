@@ -49,12 +49,18 @@ async function loadDashboard() {
 
   try {
     console.log(`Loading dashboard data for ${warehouseId}...`);
+    
+    // Prepare warehouse data endpoint based on selection
+    const warehouseDataEndpoint = warehouseId === 'all' 
+      ? "/report/value-by-warehouse"
+      : `/report/top-parts-by-warehouse${filterQuery}`;
+    
     // Parallel Fetching
     const [stockValueResp, lowStock, movements, warehouseValue, trends, monthlyData, expensesByWarehouse, accountData] = await Promise.all([
       fetchData(`/report/value${filterQuery}`, token),
       fetchData(`/report/low-stock${filterQuery}`, token),
       fetchData(`/report/movements3${filterQuery}`, token),
-      fetchData("/report/value-by-warehouse", token), // Keep global for chart unless preferred otherwise
+      fetchData(warehouseDataEndpoint, token), // Conditional endpoint
       fetchData(`/report/movement-trends${filterQuery}`, token),
       fetchData(`/report/monthly-comparison${filterQuery}`, token),
       fetchData(`/report/expense-by-warehouse${filterQuery}`, token),
@@ -168,20 +174,59 @@ function renderTrendChart(trends) {
 
 function renderWarehouseChart(data) {
   const chartEl = document.getElementById("warehouse-chart");
-  if (!chartEl) return;
+  if (!chartEl || !Array.isArray(data) || data.length === 0) return;
+  
   const ctx = chartEl.getContext("2d");
+  
   if (charts.warehouse) charts.warehouse.destroy();
-  charts.warehouse = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: data.map(d => d.warehouse_name),
-      datasets: [{
-        data: data.map(d => d.total_value),
-        backgroundColor: ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b']
-      }]
-    },
-    options: { maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } }
-  });
+  
+  // Check data type: warehouse_name (comparison) vs part_no (top parts)
+  const isWarehouseComparison = data.some(d => d.warehouse_name);
+  
+  if (isWarehouseComparison) {
+    // Warehouse comparison - doughnut chart
+    charts.warehouse = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: data.map(d => d.warehouse_name),
+        datasets: [{
+          data: data.map(d => d.total_value),
+          backgroundColor: ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899']
+        }]
+      },
+      options: { 
+        maintainAspectRatio: false, 
+        cutout: '70%', 
+        plugins: { 
+          legend: { position: 'bottom' },
+          title: { display: true, text: 'Inventory by Warehouse' }
+        } 
+      }
+    });
+  } else {
+    // Top parts by warehouse - bar chart
+    charts.warehouse = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: data.map(d => `${d.part_no} - ${d.name.substring(0, 20)}`),
+        datasets: [{
+          label: 'Times Consumed',
+          data: data.map(d => d.total_consumed),
+          backgroundColor: '#8b5cf6',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        scales: { x: { beginAtZero: true } },
+        plugins: {
+          legend: { position: 'top' },
+          title: { display: true, text: 'Top 5 Parts Consumed' }
+        }
+      }
+    });
+  }
 }
 
 function renderMonthlyChart(data) {
