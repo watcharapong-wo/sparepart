@@ -157,6 +157,8 @@ function editPart(id) {
     console.error("Row not found for ID:", id);
     return;
   }
+  
+  // Edit row with input fields (no actions)
   tr.innerHTML = `
     <td>${index + 1}</td>
     <td>${part.id}</td>
@@ -167,13 +169,22 @@ function editPart(id) {
     <td class="serial-status-cell">${renderSerialSummaryHtml(part.serial_summary)}</td>
     <td><input type="number" id="edit-price-${id}" value="${part.price ?? 0}" style="width:70px;"></td>
     <td>${escapeHtml(part.warehouse_name || "-")}</td>
-    <td class="actions-cell">
-      <div class="row-actions">
+    <td></td>
+  `;
+  
+  // Create actions row below
+  const actionRow = document.createElement("tr");
+  actionRow.id = `edit-actions-${id}`;
+  actionRow.innerHTML = `
+    <td colspan="9" style="padding: 0;">
+      <div style="padding: 8px 10px; display: flex; gap: 8px;">
         <button onclick="saveInlineEdit(${id})" class="btn btn-sm btn-success" data-i18n="save">Save</button>
         <button onclick="cancelEdit(${id})" class="btn btn-sm btn-secondary" data-i18n="cancel">Cancel</button>
       </div>
     </td>
   `;
+  tr.parentNode.insertBefore(actionRow, tr.nextSibling);
+}
 }
 
 function cancelEdit(id) {
