@@ -51,37 +51,49 @@ Ensure you have [Node.js](https://nodejs.org/) installed on your machine.
 
    *(This will install express, sqlite3, bcryptjs, cors, jsonwebtoken, etc., based on `package.json`)*
 
-3. Start the server:
+### Starting the Server
 
+**Option 1: Easiest - Double-click to run** (Windows only)
+   - Double-click `START_SERVER.bat` in the project folder
+   - A terminal window will appear and the server will start
+   - Server runs at `http://localhost:5000`
+
+**Option 2: Command line**
+   ```bash
+   npm run start
+   ```
+   or
    ```bash
    node index.js
    ```
 
-   Or, for Windows, start it without opening a terminal window:
-
+**Option 3: Hidden window launcher** (Windows only, no terminal visible)
    ```powershell
    wscript.exe .\run_server_hidden.vbs
    ```
+   - Checks port 5000 first and won't start duplicate server
 
-   This hidden launcher checks port `5000` first and will not start a duplicate server.
-
-4. To start automatically when you sign in to Windows:
-
+**Option 4: Auto-start on Windows logon** (requires admin)
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\register_autostart_admin.ps1
    ```
+   - Creates a Windows Scheduled Task
+   - Server starts automatically when you sign in
 
-   This will request administrator privileges and create a Windows Scheduled Task that starts the server automatically at logon.
-
-   To remove the autostart task later:
-
+   To remove autostart:
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\unregister_autostart_admin.ps1
    ```
 
-5. Access the application:
+**Option 5: VS Code auto-run** (if using VS Code)
+   - Open workspace folder in VS Code
+   - Server will start automatically in the background
 
-   Open your browser and navigate to `http://localhost:5000`.
+### Access the Application
+
+1. Open your browser and navigate to: **`http://localhost:5000`**
+2. Log in with your administrator credentials
+3. Start using the spare parts management system
 
 ### Default Login
 
