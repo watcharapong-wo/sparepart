@@ -160,12 +160,12 @@ function editPart(id) {
   tr.innerHTML = `
     <td>${index + 1}</td>
     <td>${part.id}</td>
-    <td><input type="text" id="edit-name-${id}" value="${escapeHtml(part.name)}" style="width:150px;"></td>
-    <td><input type="text" id="edit-part_no-${id}" value="${escapeHtml(part.part_no)}" style="width:100px;"></td>
-    <td><input type="text" id="edit-desc-${id}" value="${escapeHtml(part.description || "")}" style="width:200px;"></td>
-    <td><input type="number" id="edit-qty-${id}" value="${part.quantity}" style="width:60px;"></td>
+    <td><input type="text" id="edit-name-${id}" value="${escapeHtml(part.name)}" style="width:100px;"></td>
+    <td><input type="text" id="edit-part_no-${id}" value="${escapeHtml(part.part_no)}" style="width:80px;"></td>
+    <td><input type="text" id="edit-desc-${id}" value="${escapeHtml(part.description || "")}" style="width:120px;"></td>
+    <td><input type="number" id="edit-qty-${id}" value="${part.quantity}" style="width:50px;"></td>
     <td class="serial-status-cell">${renderSerialSummaryHtml(part.serial_summary)}</td>
-    <td><input type="number" id="edit-price-${id}" value="${part.price ?? 0}" style="width:80px;"></td>
+    <td><input type="number" id="edit-price-${id}" value="${part.price ?? 0}" style="width:70px;"></td>
     <td>${escapeHtml(part.warehouse_name || "-")}</td>
     <td class="actions-cell">
       <div class="row-actions">
