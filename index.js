@@ -804,6 +804,11 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
   const { part_id, movement_type, quantity, department, receiver, receipt_number, note, due_date, serial_ids, new_serials } = req.body;
   const userId = req.user.userId;
 
+  const VALID_MOVEMENT_TYPES = ["IN", "OUT", "BORROW", "RETURN", "TRANSFER"];
+  if (!movement_type || !VALID_MOVEMENT_TYPES.includes(movement_type)) {
+    return res.status(400).json({ error: `Invalid movement_type. Must be one of: ${VALID_MOVEMENT_TYPES.join(", ")}` });
+  }
+
   db.get(
     "SELECT unit_type, COALESCE(conversion_rate, 1) AS conversion_rate, COALESCE(piece_stock, quantity) AS piece_stock, quantity FROM spare_parts WHERE id = ?",
     [part_id],

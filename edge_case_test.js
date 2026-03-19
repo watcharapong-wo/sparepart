@@ -176,8 +176,8 @@ async function main() {
     }, { 'Authorization': `Bearer ${authToken}` })
   )) passed++; else failed++;
 
-  // Test 13: Invalid movement type (API accepts with default behavior)
-  if (await test('Invalid movement type acceptance', 201, () => 
+  // Test 13: Invalid movement type (API now rejects with 400)
+  if (await test('Invalid movement type rejection', 400, () => 
     request('POST', '/stock-movements', {
       part_id: 1,
       movement_type: 'INVALID',
