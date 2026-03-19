@@ -706,6 +706,9 @@ th {
   color: var(--text-muted);
   font-weight: 600;
   background-color: #f9fafb;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 tbody tr:last-child td {
