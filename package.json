@@ -6,6 +6,9 @@
   "scripts": {
     "check:mssql": "node check_mssql_connection.js",
     "migrate:mssql": "node scripts/migrate_sqlite_to_mssql.js",
+    "backup:mssql": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File ./scripts/backup_mssql.ps1",
+    "health:check": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File ./scripts/health_check.ps1",
+    "backup:schedule": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File ./scripts/register_daily_backup_task.ps1",
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
