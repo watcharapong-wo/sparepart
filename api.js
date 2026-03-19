@@ -200,3 +200,133 @@ window.showToast = function(message, type = "info") {
     });
   }, 3000);
 };
+
+/* ============================================
+   UI UTILITIES: BUTTON LOADING STATES
+   ============================================ */
+window.setButtonLoading = function(button, isLoading = true) {
+  if (!button) return;
+  
+  if (isLoading) {
+    button.classList.add("btn-loading");
+    button.disabled = true;
+    const loader = document.createElement("span");
+    loader.className = "btn-loader";
+    const originalText = button.textContent;
+    button.innerHTML = '';
+    button.appendChild(loader);
+    button.appendChild(document.createTextNode(originalText));
+    button.dataset.originalText = originalText;
+  } else {
+    button.classList.remove("btn-loading");
+    button.disabled = false;
+    const originalText = button.dataset.originalText || button.textContent;
+    button.innerHTML = originalText;
+    delete button.dataset.originalText;
+  }
+};
+
+/* ============================================
+   UI UTILITIES: FORM VALIDATION
+   ============================================ */
+window.showFieldError = function(fieldEl, errorMessage) {
+  if (!fieldEl) return;
+  
+  // Add error class to field
+  const formGroup = fieldEl.closest(".stacked-form-group") || fieldEl.closest(".form-group");
+  if (formGroup) {
+    formGroup.classList.add("form-error");
+  } else {
+    fieldEl.classList.add("form-error");
+  }
+  
+  // Remove existing error message if any
+  const existingError = fieldEl.parentElement?.querySelector(".form-error-message");
+  if (existingError) existingError.remove();
+  
+  // Create and append error message
+  const errorEl = document.createElement("span");
+  errorEl.className = "form-error-message";
+  errorEl.textContent = errorMessage;
+  fieldEl.parentElement.appendChild(errorEl);
+};
+
+window.clearFieldError = function(fieldEl) {
+  if (!fieldEl) return;
+  
+  // Remove error class
+  const formGroup = fieldEl.closest(".stacked-form-group") || fieldEl.closest(".form-group");
+  if (formGroup) {
+    formGroup.classList.remove("form-error");
+  } else {
+    fieldEl.classList.remove("form-error");
+  }
+  
+  // Remove error message
+  const errorEl = fieldEl.parentElement?.querySelector(".form-error-message");
+  if (errorEl) errorEl.remove();
+};
+
+window.validateField = function(fieldEl, validationType = "required", customMessage = "") {
+  const value = (fieldEl.value || "").trim();
+  let isValid = true;
+  let message = customMessage;
+  
+  if (validationType === "required") {
+    isValid = value.length > 0;
+    message = message || "This field is required";
+  } else if (validationType === "email") {
+    isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    message = message || "Please enter a valid email";
+  } else if (validationType === "number") {
+    isValid = !isNaN(value) && value.length > 0;
+    message = message || "Please enter a valid number";
+  } else if (validationType === "min-length") {
+    const minLength = parseInt(fieldEl.dataset.minLength || "3");
+    isValid = value.length >= minLength;
+    message = message || `Minimum ${minLength} characters required`;
+  } else if (validationType === "phone") {
+    isValid = /^[\d\s\-\+\(\)]+$/.test(value) && value.length >= 8;
+    message = message || "Please enter a valid phone number";
+  }
+  
+  if (!isValid) {
+    window.showFieldError(fieldEl, message);
+  } else {
+    window.clearFieldError(fieldEl);
+  }
+  
+  return isValid;
+};
+
+/* ============================================
+   UI UTILITIES: EMPTY STATES
+   ============================================ */
+window.showEmptyState = function(containerEl, title = "No data", message = "There's nothing to display here", icon = "📭") {
+  if (!containerEl) return;
+  
+  containerEl.innerHTML = `
+    <div class="empty-state">
+      <div class="empty-state-icon">${icon}</div>
+      <div class="empty-state-title">${title}</div>
+      <div class="empty-state-message">${message}</div>
+    </div>
+  `;
+};
+
+window.showTableEmptyState = function(tableEl, colspanCount = 5, title = "No data", icon = "📭") {
+  if (!tableEl) return;
+  
+  const tbody = tableEl.querySelector("tbody");
+  if (!tbody) return;
+  
+  tbody.innerHTML = `
+    <tr class="empty-state-row">
+      <td colspan="${colspanCount}" class="empty-state-content">
+        <div style="font-size: 32px; margin-bottom: 8px;">${icon}</div>
+        <div style="font-weight: 600; color: var(--text-main); margin-bottom: 4px;">${title}</div>
+        <div style="font-size: 13px; color: #94a3b8;">No records to display</div>
+      </td>
+    </tr>
+  `;
+};

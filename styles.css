@@ -1194,6 +1194,175 @@ tbody tr:hover {
   background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
 }
 
+/* ============================================
+   BUTTON LOADING STATES
+   ============================================ */
+.btn:disabled,
+.btn.btn-loading {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn.btn-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-loader {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.btn-submit-premium:disabled,
+.btn-submit-premium.btn-loading {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-submit-premium.btn-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+/* ============================================
+   FORM VALIDATION ERROR STATES
+   ============================================ */
+.stacked-form-group.form-error input,
+.stacked-form-group.form-error select,
+.stacked-form-group.form-error textarea {
+  border-color: var(--danger) !important;
+  background-color: #fef2f2;
+}
+
+.stacked-form-group.form-error input:focus,
+.stacked-form-group.form-error select:focus,
+.stacked-form-group.form-error textarea:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+  border-color: var(--danger) !important;
+}
+
+.form-group.form-error input,
+.form-group.form-error select {
+  border-color: var(--danger) !important;
+  background-color: #fef2f2;
+}
+
+.form-group.form-error input:focus,
+.form-group.form-error select:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+}
+
+.form-error-message {
+  display: block;
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.form-success-message {
+  display: block;
+  color: var(--success);
+  font-size: 12px;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.form-grid-premium-v2 input.form-error,
+.form-grid-premium-v2 select.form-error,
+.form-grid-premium-v2 textarea.form-error {
+  border-color: var(--danger) !important;
+  background-color: #fef2f2;
+}
+
+.form-grid-premium-v2 input.form-error:focus,
+.form-grid-premium-v2 select.form-error:focus,
+.form-grid-premium-v2 textarea.form-error:focus {
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1) !important;
+  border-color: var(--danger) !important;
+}
+
+/* ============================================
+   EMPTY STATE STYLING
+   ============================================ */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 24px;
+  text-align: center;
+  color: #94a3b8;
+}
+
+.empty-state-icon {
+  font-size: 56px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 8px;
+}
+
+.empty-state-message {
+  font-size: 14px;
+  color: #64748b;
+  margin-bottom: 24px;
+  max-width: 300px;
+}
+
+.empty-state-action {
+  padding: 10px 24px;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.empty-state-action:hover {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
+}
+
+/* Table empty state */
+.table tbody tr.empty-state-row td {
+  padding: 48px 16px !important;
+  text-align: center;
+  color: #94a3b8;
+  border: none;
+}
+
+.empty-state-inline {
+  display: table-row;
+}
+
+.empty-state-content {
+  display: table-cell;
+  padding: 48px 16px;
+  text-align: center;
+  width: 100%;
+  color: #94a3b8;
+}
+
 /* Tablet/Mobile Responsive */
 @media (max-width: 1024px) {
   .form-grid-premium-v2 {

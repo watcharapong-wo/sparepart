@@ -140,7 +140,7 @@ function renderSparePartsTable(data) {
         tbody.appendChild(tr);
       });
     } else {
-      tbody.innerHTML = `<tr><td colspan="10" class="table-empty-state"><i style="color:var(--text-muted)">ℹ️</i> ${translations[currentLang].noData || "No data found"}</td></tr>`;
+      showTableEmptyState(document.getElementById("spareparts-table"), 10, "No Spare Parts", "📦");
     }
     if (typeof applyTranslations === "function") applyTranslations();
     if (typeof checkPermissions === "function") checkPermissions();
@@ -273,7 +273,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.getElementById("add-part-form")?.addEventListener("submit", async function (e) {
     e.preventDefault();
+    
+    // Validate required fields
+    const requiredFields = [
+      { el: document.getElementById("add-part-no"), type: "required", message: "Part Type is required" },
+      { el: document.getElementById("add-name"), type: "required", message: "Name Device is required" },
+      { el: document.getElementById("add-quantity"), type: "number", message: "Quantity must be a valid number" }
+    ];
+    
+    let hasErrors = false;
+    requiredFields.forEach(field => {
+      if (field.el && !validateField(field.el, field.type, field.message)) {
+        hasErrors = true;
+      }
+    });
+    
+    if (hasErrors) {
+      showToast("Please fix the errors in the form", "error");
+      return;
+    }
+    
     try {
+      const submitBtn = this.querySelector('button[type="submit"]');
+      setButtonLoading(submitBtn, true);
+      
       const part_no = document.getElementById("add-part-no").value;
       const name = document.getElementById("add-name").value;
       const description = document.getElementById("add-description").value;
@@ -288,11 +311,13 @@ document.addEventListener("DOMContentLoaded", () => {
       
       if (serials.length === 0) {
         showToast("Please enter at least one SP no", "error");
+        setButtonLoading(submitBtn, false);
         return;
       }
 
       if ((unit_type === "box" || unit_type === "pack") && serials.length !== quantity) {
         showToast("For box/pack, SP no count must equal quantity", "error");
+        setButtonLoading(submitBtn, false);
         return;
       }
 
@@ -305,6 +330,7 @@ document.addEventListener("DOMContentLoaded", () => {
           serialsEl.style.borderColor = "#ef4444";
           serialsEl.focus();
         }
+        setButtonLoading(submitBtn, false);
         return;
       }
 
@@ -312,9 +338,17 @@ document.addEventListener("DOMContentLoaded", () => {
       await postData("/spareparts", { part_no, name, description, quantity, unit_type, conversion_rate, price, warehouseId, serials }, token);
       this.reset();
       showToast(translations[currentLang].saveSuccess || "Saved successfully", "success");
+      
+      // Clear field errors on success
+      requiredFields.forEach(field => {
+        if (field.el) clearFieldError(field.el);
+      });
+      
+      setButtonLoading(submitBtn, false);
       loadSpareParts();
     } catch (err) {
       console.error("Save failed:", err);
+      setButtonLoading(this.querySelector('button[type="submit"]'), false);
       if (err.message && err.message.includes("409")) {
         showToast(err.message.includes("serial") ? err.message : "Duplicate SP no detected", "error");
       } else {

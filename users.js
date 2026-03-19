@@ -19,11 +19,44 @@ document.addEventListener("DOMContentLoaded", function() {
 
   document.getElementById("add-user-form").addEventListener("submit", async function(e) {
     e.preventDefault();
-    const username = document.getElementById("reg-username").value;
-    const password = document.getElementById("reg-password").value;
-    const role = document.getElementById("reg-role").value;
+    
+    // Validate required fields
+    const usernameEl = document.getElementById("reg-username");
+    const passwordEl = document.getElementById("reg-password");
+    const roleEl = document.getElementById("reg-role");
+    
+    const requiredFields = [
+      { el: usernameEl, type: "min-length", message: "Username must be at least 3 characters" },
+      { el: passwordEl, type: "min-length", message: "Password must be at least 6 characters" },
+      { el: roleEl, type: "required", message: "Please select a role" }
+    ];
+    
+    let hasErrors = false;
+    requiredFields.forEach(field => {
+      if (field.el) {
+        if (field.type === "min-length") {
+          const minLength = field.el.dataset.minLength || (field.el.id === "reg-password" ? "6" : "3");
+          field.el.dataset.minLength = minLength;
+        }
+        if (!validateField(field.el, field.type, field.message)) {
+          hasErrors = true;
+        }
+      }
+    });
+    
+    if (hasErrors) {
+      showToast("Please fix the errors in the form", "error");
+      return;
+    }
+    
+    const username = usernameEl.value;
+    const password = passwordEl.value;
+    const role = roleEl.value;
 
     try {
+      const submitBtn = this.querySelector('button[type="submit"]');
+      setButtonLoading(submitBtn, true);
+      
       const response = await fetch(`${window.API_URL}/register`, {
         method: "POST",
         headers: {
@@ -37,12 +70,21 @@ document.addEventListener("DOMContentLoaded", function() {
       if (response.ok) {
         showToast("User created successfully", "success");
         document.getElementById("add-user-form").reset();
+        
+        // Clear field errors on success
+        requiredFields.forEach(field => {
+          if (field.el) clearFieldError(field.el);
+        });
+        
+        setButtonLoading(submitBtn, false);
         loadUsers();
       } else {
         showToast("Error: " + (data.error || "Failed to create user"), "error");
+        setButtonLoading(submitBtn, false);
       }
     } catch (err) {
       console.error(err);
+      setButtonLoading(this.querySelector('button[type="submit"]'), false);
       showToast("System Error", "error");
     }
   });
