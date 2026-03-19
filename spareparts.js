@@ -130,7 +130,7 @@ function renderSparePartsTable(data) {
           <td class="serial-status-cell">${serialSummary}</td>
           <td class="cell-price">${p.price ?? ""}</td>
           <td>${escapeHtml(p.warehouse_name || "-")}</td>
-          <td>
+          <td class="actions-cell">
             <div class="row-actions">
               <button onclick="editPart(${p.id})" class="btn btn-sm btn-primary" data-i18n="edit">Edit</button>
               <button onclick="deletePart(${p.id})" class="btn btn-sm btn-danger" data-i18n="delete">Delete</button>
@@ -167,7 +167,7 @@ function editPart(id) {
     <td class="serial-status-cell">${renderSerialSummaryHtml(part.serial_summary)}</td>
     <td><input type="number" id="edit-price-${id}" value="${part.price ?? 0}" style="width:80px;"></td>
     <td>${escapeHtml(part.warehouse_name || "-")}</td>
-    <td>
+    <td class="actions-cell">
       <div class="row-actions">
         <button onclick="saveInlineEdit(${id})" class="btn btn-sm btn-success" data-i18n="save">Save</button>
         <button onclick="cancelEdit(${id})" class="btn btn-sm btn-secondary" data-i18n="cancel">Cancel</button>

@@ -715,6 +715,19 @@ tbody tr:last-child td {
 td {
   color: var(--text-main);
   vertical-align: middle;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+td.serial-status-cell,
+td.actions-cell,
+td.cell-price {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 td input {
