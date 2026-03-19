@@ -654,6 +654,8 @@ body.login-page {
 
 .table-responsive {
   overflow-x: auto;
+  overflow-y: auto;
+  max-height: 600px;
 }
 
 /* -------------------------------------
