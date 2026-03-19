@@ -24,7 +24,7 @@ A web-based inventory and spare part management system designed to streamline tr
 
 - **Frontend**: HTML5, Vanilla JavaScript, CSS3
 - **Backend / API**: Node.js, Express.js
-- **Database**: SQLite3
+- **Database**: SQLite3, with SQL Server migration scaffolding in progress
 - **Authentication**: JWT (JSON Web Tokens) & bcryptjs for password hashing.
 - **Data Visualization**: Chart.js
 
@@ -49,45 +49,89 @@ Ensure you have [Node.js](https://nodejs.org/) installed on your machine.
    npm install
    ```
 
-   *(This will install express, sqlite3, bcryptjs, cors, jsonwebtoken, etc., based on `package.json`)*
+   *(This will install express, sqlite3, mssql, bcryptjs, cors, jsonwebtoken, etc., based on `package.json`)*
+
+### SQL Server Migration Setup
+
+1. Copy [.env.example](d:/Project%20Sparepart/new-project/.env.example) to `.env` and set the `MSSQL_*` values.
+2. Keep `DB_FALLBACK_TO_SQLITE=true` while preparing migration (safe mode).
+3. Create the SQL Server schema from [schema_mssql.sql](d:/Project%20Sparepart/new-project/schema_mssql.sql).
+4. Test the SQL Server connection:
+
+   ```bash
+   npm run check:mssql
+   ```
+
+5. Run the first-pass SQLite to SQL Server migration script:
+
+   ```bash
+   npm run migrate:mssql
+   ```
+
+6. When ready to test MSSQL runtime path, set:
+
+   ```env
+   DB_CLIENT=mssql
+   DB_FALLBACK_TO_SQLITE=false
+   ```
+
+This project runs on SQLite by default. The SQL Server work added here now includes an adapter path that can be toggled on for incremental testing.
 
 ### Starting the Server
 
-**Option 1: Easiest - Double-click to run** (Windows only)
-   - Double-click `START_SERVER.bat` in the project folder
-   - A terminal window will appear and the server will start
-   - Server runs at `http://localhost:5000`
+#### Option 1: Easiest - Double-click to run
 
-**Option 2: Command line**
+Windows only.
+
+- Double-click `START_SERVER.bat` in the project folder
+- A terminal window will appear and the server will start
+- Server runs at `http://localhost:5000`
+
+#### Option 2: Command line
+
    ```bash
    npm run start
    ```
+
    or
+
    ```bash
    node index.js
    ```
 
-**Option 3: Hidden window launcher** (Windows only, no terminal visible)
+#### Option 3: Hidden window launcher
+
+Windows only, no terminal visible.
+
    ```powershell
    wscript.exe .\run_server_hidden.vbs
    ```
-   - Checks port 5000 first and won't start duplicate server
 
-**Option 4: Auto-start on Windows logon** (requires admin)
+- Checks port 5000 first and won't start duplicate server
+
+#### Option 4: Auto-start on Windows logon
+
+Requires admin.
+
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\register_autostart_admin.ps1
    ```
-   - Creates a Windows Scheduled Task
-   - Server starts automatically when you sign in
+
+- Creates a Windows Scheduled Task
+- Server starts automatically when you sign in
 
    To remove autostart:
+
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\unregister_autostart_admin.ps1
    ```
 
-**Option 5: VS Code auto-run** (if using VS Code)
-   - Open workspace folder in VS Code
-   - Server will start automatically in the background
+#### Option 5: VS Code auto-run
+
+If using VS Code.
+
+- Open workspace folder in VS Code
+- Server will start automatically in the background
 
 ### Access the Application
 

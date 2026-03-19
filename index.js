@@ -20,15 +20,23 @@ try {
 }
 
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const { sendTeamsNotification } = require('./teams_notifier');
+const dbConfig = require("./db/config");
+const { createDatabase } = require("./db/adapter");
+const sqlDialect = require("./db/dialect");
 
 const app = express();
 const PORT = 5000; // เปลี่ยนมาใช้ 5000 ถาวร
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+
+if (dbConfig.dbClient !== "sqlite") {
+  console.warn(`[DB] DB_CLIENT=${dbConfig.dbClient} is configured, runtime is in migration mode.`);
+  console.warn(`[DB] DB_FALLBACK_TO_SQLITE=${dbConfig.fallbackToSqlite}`);
+  console.warn("[DB] Use npm run check:mssql and npm run migrate:mssql to prepare SQL Server first.");
+}
 
 process.on("uncaughtException", (err) => {
   console.error("FATAL: Uncaught Exception:", err.message);
@@ -82,12 +90,8 @@ app.get("/", (req, res) => {
 });
 // ---------------------------
 
-// เปิดฐานข้อมูล
-const dbPath = path.join(__dirname, "sparepart.db");
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) console.error(err.message);
-  else console.log("DB opened at " + dbPath);
-});
+// เปิดฐานข้อมูลผ่าน adapter (SQLite default, fallback during MSSQL migration phase)
+const db = createDatabase();
 
 // สร้างตารางอะไหล่, ผู้ใช้, และคลัง
 db.run(
@@ -192,7 +196,7 @@ function runDailyAutomation() {
 
           triggerOverdueReminders();
 
-          db.run("INSERT OR REPLACE INTO system_config (key, value) VALUES ('last_overdue_remind_date', ?)", [todayStr]);
+          db.run(sqlDialect.systemConfigUpsertSql, [todayStr]);
         }
       });
     }
@@ -207,7 +211,7 @@ async function triggerOverdueReminders() {
     JOIN warehouses w ON p.warehouseId = w.id
     WHERE m.movement_type = 'BORROW' 
       AND m.return_status = 'pending' 
-      AND m.due_date < date('now')
+      AND m.due_date < ${sqlDialect.dateNow}
   `;
 
   db.all(sql, [], (err, rows) => {
@@ -280,6 +284,82 @@ function logActivity(userId, action, details) {
   db.run(sql, [userId, action, details || null], (err) => {
     if (err) console.error("Logging error:", err.message);
   });
+}
+
+function buildSerialUsageText(row) {
+  return `${row.serial_no} (${Number(row.used_qty) || 1}: ${Number(row.before_qty) || 0}->${Number(row.after_qty) || 0})`;
+}
+
+function fetchMovementSerialUsageMap(movementIds, callback) {
+  if (!movementIds || movementIds.length === 0) {
+    callback(null, new Map());
+    return;
+  }
+
+  const placeholders = movementIds.map(() => "?").join(", ");
+  const sql = `SELECT mi.movement_id, spi.serial_no, mi.used_qty, mi.before_qty, mi.after_qty
+               FROM movement_items mi
+               JOIN spare_part_items spi ON spi.id = mi.item_id
+               WHERE mi.movement_id IN (${placeholders})
+               ORDER BY mi.movement_id, mi.id`;
+
+  db.all(sql, movementIds, (err, rows) => {
+    if (err) return callback(err);
+    const usageMap = new Map();
+    (rows || []).forEach((row) => {
+      const current = usageMap.get(row.movement_id) || [];
+      current.push(buildSerialUsageText(row));
+      usageMap.set(row.movement_id, current);
+    });
+    callback(null, usageMap);
+  });
+}
+
+function fetchSerialSummaryMap(partIds, callback) {
+  if (!partIds || partIds.length === 0) {
+    callback(null, new Map());
+    return;
+  }
+
+  const placeholders = partIds.map(() => "?").join(", ");
+  const sql = `SELECT part_id, serial_no, initial_qty, remaining_qty, status, id
+               FROM spare_part_items
+               WHERE part_id IN (${placeholders})
+               ORDER BY part_id, CASE WHEN status = 'partial' THEN 0 ELSE 1 END, id ASC`;
+
+  db.all(sql, partIds, (err, rows) => {
+    if (err) return callback(err);
+    const summaryMap = new Map();
+    (rows || []).forEach((row) => {
+      const current = summaryMap.get(row.part_id) || [];
+      current.push(`${row.serial_no} [${Number(row.remaining_qty) || 1}/${Number(row.initial_qty) || 1}]`);
+      summaryMap.set(row.part_id, current);
+    });
+    callback(null, summaryMap);
+  });
+}
+
+function insertOrGetSparePartItem(partId, serialNo, itemQty, callback) {
+  db.get(
+    "SELECT id FROM spare_part_items WHERE part_id = ? AND serial_no = ?",
+    [partId, serialNo],
+    (selectErr, existingRow) => {
+      if (selectErr) return callback(selectErr);
+      if (existingRow?.id) {
+        callback(null, { itemId: existingRow.id, created: false });
+        return;
+      }
+
+      db.run(
+        "INSERT INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty) VALUES (?, ?, 'available', ?, ?)",
+        [partId, serialNo, itemQty, itemQty],
+        function(insertErr) {
+          if (insertErr) return callback(insertErr);
+          callback(null, { itemId: this.lastID, created: true });
+        }
+      );
+    }
+  );
 }
 
 function seedData() {
@@ -408,33 +488,33 @@ app.get("/report/movements2", authenticateToken, (req, res) => {
 });
 
 app.get("/report/activity-logs", authenticateToken, requireRole(["admin"]), (req, res) => {
-  let sql = `SELECT l.id, l.user_id, l.action, l.details, strftime('%Y-%m-%dT%H:%M:%SZ', l.timestamp) as timestamp, u.username, u.role FROM activity_logs l LEFT JOIN users u ON u.id = l.user_id ORDER BY l.timestamp DESC LIMIT 500`;
+  let sql = `SELECT l.id, l.user_id, l.action, l.details, ${sqlDialect.isoUtc("l.timestamp")} as timestamp, u.username, u.role FROM activity_logs l LEFT JOIN users u ON u.id = l.user_id ORDER BY l.timestamp DESC ${sqlDialect.limit(500)}`;
   db.all(sql, [], (err, rows) => res.json(rows));
 });
 
 app.get("/report/movements3", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT m.*, p.name as part_name, p.part_no, u.username,
-                    COALESCE((
-                      SELECT GROUP_CONCAT(
-                        spi.serial_no || ' (' || COALESCE(mi.used_qty, 1) || ': ' || COALESCE(mi.before_qty, 0) || '->' || COALESCE(mi.after_qty, 0) || ')',
-                        ', '
-                      )
-                      FROM movement_items mi
-                      JOIN spare_part_items spi ON spi.id = mi.item_id
-                      WHERE mi.movement_id = m.id
-                    ), '-') AS serial_usage
+  let sql = `SELECT m.*, p.name as part_name, p.part_no, u.username
              FROM stock_movements m
              JOIN spare_parts p ON m.part_id = p.id
              LEFT JOIN users u ON m.user_id = u.id
-             WHERE m.movement_date >= date('now', '-30 days')`;
+             WHERE m.movement_date >= ${sqlDialect.dateDaysAgo(30)}`;
   const params = [];
   if (warehouseId && warehouseId !== 'all') { sql += " AND p.warehouseId = ?"; params.push(warehouseId); }
   sql += " ORDER BY m.movement_date DESC";
   console.log("[MOVEMENTS3] warehouseId:", warehouseId, "SQL:", sql, "Params:", params);
   db.all(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const movementIds = (rows || []).map((row) => row.id);
+    fetchMovementSerialUsageMap(movementIds, (usageErr, usageMap) => {
+      if (usageErr) return res.status(500).json({ error: usageErr.message });
+      const result = (rows || []).map((row) => ({
+        ...row,
+        serial_usage: (usageMap.get(row.id) || []).join(", ") || "-"
+      }));
     console.log("[MOVEMENTS3] result:", rows);
-    res.json(rows);
+      res.json(result);
+    });
   });
 });
 
@@ -453,25 +533,25 @@ app.get("/report/expense-by-warehouse", authenticateToken, (req, res) => {
 
 app.get("/report/movement-trends", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT date(movement_date) as date, movement_type, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_date >= date('now', '-7 days')`;
+  let sql = `SELECT ${sqlDialect.dateOnly("movement_date")} as date, movement_type, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_date >= ${sqlDialect.dateDaysAgo(7)}`;
   const params = [];
   if (warehouseId && warehouseId !== 'all') { sql += " AND p.warehouseId = ?"; params.push(warehouseId); }
-  sql += " GROUP BY date(m.movement_date), m.movement_type";
+  sql += ` GROUP BY ${sqlDialect.dateOnly("m.movement_date")}, m.movement_type`;
   db.all(sql, params, (err, rows) => res.json(rows));
 });
 
 app.get("/report/monthly-comparison", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT strftime('%Y-%m', m.movement_date) as month, m.movement_type, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_date >= date('now', '-6 months')`;
+  let sql = `SELECT ${sqlDialect.monthKey("m.movement_date")} as month, m.movement_type, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_date >= ${sqlDialect.dateDaysAgo(180)}`;
   const params = [];
   if (warehouseId && warehouseId !== 'all') { sql += " AND p.warehouseId = ?"; params.push(warehouseId); }
-  sql += " GROUP BY month, m.movement_type";
+  sql += ` GROUP BY ${sqlDialect.monthKey("m.movement_date")}, m.movement_type`;
   db.all(sql, params, (err, rows) => res.json(rows));
 });
 
 app.get("/report/withdraw-by-account", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT m.receiver, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_type IN ('OUT', 'BORROW') AND m.receiver IS NOT NULL GROUP BY m.receiver ORDER BY total_qty DESC LIMIT 10`;
+  let sql = `SELECT m.receiver, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_type IN ('OUT', 'BORROW') AND m.receiver IS NOT NULL GROUP BY m.receiver ORDER BY total_qty DESC ${sqlDialect.limit(10)}`;
   const params = [];
   if (warehouseId && warehouseId !== 'all') { sql += " AND p.warehouseId = ?"; params.push(warehouseId); }
   db.all(sql, params, (err, rows) => res.json(rows));
@@ -479,8 +559,8 @@ app.get("/report/withdraw-by-account", authenticateToken, (req, res) => {
 
 app.get("/report/insights", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  const popularSql = `SELECT p.part_no, p.name, SUM(m.quantity) as total_consumed FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_type IN ('OUT', 'BORROW') ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''} GROUP BY p.id ORDER BY total_consumed DESC LIMIT 5`;
-  const deadStockSql = `SELECT p.part_no, p.name, p.quantity, MAX(m.movement_date) as last_movement FROM spare_parts p LEFT JOIN stock_movements m ON p.id = m.part_id WHERE p.quantity > 0 ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''} GROUP BY p.id HAVING last_movement IS NULL OR last_movement < date('now', '-180 days') LIMIT 10`;
+  const popularSql = `SELECT p.part_no, p.name, SUM(m.quantity) as total_consumed FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_type IN ('OUT', 'BORROW') ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''} GROUP BY p.id, p.part_no, p.name ORDER BY total_consumed DESC ${sqlDialect.limit(5)}`;
+  const deadStockSql = `SELECT p.part_no, p.name, p.quantity, MAX(m.movement_date) as last_movement FROM spare_parts p LEFT JOIN stock_movements m ON p.id = m.part_id WHERE p.quantity > 0 ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''} GROUP BY p.id, p.part_no, p.name, p.quantity HAVING MAX(m.movement_date) IS NULL OR MAX(m.movement_date) < ${sqlDialect.dateDaysAgo(180)} ORDER BY last_movement ASC ${sqlDialect.limit(10)}`;
   const params = warehouseId && warehouseId !== 'all' ? [warehouseId] : [];
 
   db.all(popularSql, params, (err, popular) => {
@@ -488,118 +568,120 @@ app.get("/report/insights", authenticateToken, (req, res) => {
   });
 });
 
-// Migration fields for spare_parts
-db.all("PRAGMA table_info(spare_parts)", [], (err, cols) => {
-  if (!cols) return;
-  if (!cols.some((c) => c.name === "warehouseId")) {
-    db.run("ALTER TABLE spare_parts ADD COLUMN warehouseId INTEGER");
-  }
-  if (!cols.some((c) => c.name === "unit_type")) {
-    db.run("ALTER TABLE spare_parts ADD COLUMN unit_type TEXT DEFAULT 'piece'");
-  }
-  if (!cols.some((c) => c.name === "conversion_rate")) {
-    db.run("ALTER TABLE spare_parts ADD COLUMN conversion_rate REAL DEFAULT 1");
-  }
-  if (!cols.some((c) => c.name === "piece_stock")) {
-    db.run("ALTER TABLE spare_parts ADD COLUMN piece_stock INTEGER DEFAULT 0", (altErr) => {
-      if (!altErr) {
-        db.run("UPDATE spare_parts SET piece_stock = CAST(quantity * COALESCE(conversion_rate, 1) AS INTEGER)");
-      } else {
-        console.error("Migration piece_stock error:", altErr.message);
-      }
-    });
-  }
-});
-
-// Migration fields for spare_part_items
- db.all("PRAGMA table_info(spare_part_items)", [], (err, cols) => {
-  if (!cols) return;
-
-  const ensureNormalizedItems = () => {
-    db.run(
-      `UPDATE spare_part_items
-       SET initial_qty = COALESCE(initial_qty, 1),
-           remaining_qty = COALESCE(remaining_qty, 1),
-           status = CASE
-             WHEN COALESCE(remaining_qty, 1) <= 0 THEN 'consumed'
-             WHEN COALESCE(remaining_qty, 1) < COALESCE(initial_qty, 1) THEN 'partial'
-             ELSE 'available'
-           END`
-    );
-  };
-
-  const ensureLastUsedAt = () => {
-    if (!cols.some((c) => c.name === "last_used_at")) {
-      db.run("ALTER TABLE spare_part_items ADD COLUMN last_used_at DATETIME", ensureNormalizedItems);
-      return;
+if (dbConfig.dbClient === "sqlite") {
+  db.all("PRAGMA table_info(spare_parts)", [], (err, cols) => {
+    if (!cols) return;
+    if (!cols.some((c) => c.name === "warehouseId")) {
+      db.run("ALTER TABLE spare_parts ADD COLUMN warehouseId INTEGER");
     }
-    ensureNormalizedItems();
-  };
-
-  const ensureRemainingQty = () => {
-    if (!cols.some((c) => c.name === "remaining_qty")) {
-      db.run("ALTER TABLE spare_part_items ADD COLUMN remaining_qty INTEGER DEFAULT 1", (altErr) => {
+    if (!cols.some((c) => c.name === "unit_type")) {
+      db.run("ALTER TABLE spare_parts ADD COLUMN unit_type TEXT DEFAULT 'piece'");
+    }
+    if (!cols.some((c) => c.name === "conversion_rate")) {
+      db.run("ALTER TABLE spare_parts ADD COLUMN conversion_rate REAL DEFAULT 1");
+    }
+    if (!cols.some((c) => c.name === "piece_stock")) {
+      db.run("ALTER TABLE spare_parts ADD COLUMN piece_stock INTEGER DEFAULT 0", (altErr) => {
         if (!altErr) {
-          db.run(
-            `UPDATE spare_part_items
-             SET remaining_qty = COALESCE((
-               SELECT CASE
-                 WHEN p.unit_type IN ('box', 'pack') THEN CAST(COALESCE(p.conversion_rate, 1) AS INTEGER)
-                 ELSE 1
-               END
-               FROM spare_parts p
-               WHERE p.id = spare_part_items.part_id
-             ), 1)`,
-            ensureLastUsedAt
-          );
-          return;
+          db.run("UPDATE spare_parts SET piece_stock = CAST(quantity * COALESCE(conversion_rate, 1) AS INTEGER)");
+        } else {
+          console.error("Migration piece_stock error:", altErr.message);
         }
-        ensureLastUsedAt();
       });
+    }
+  });
+
+  db.all("PRAGMA table_info(spare_part_items)", [], (err, cols) => {
+    if (!cols) return;
+
+    const ensureNormalizedItems = () => {
+      db.run(
+        `UPDATE spare_part_items
+         SET initial_qty = COALESCE(initial_qty, 1),
+             remaining_qty = COALESCE(remaining_qty, 1),
+             status = CASE
+               WHEN COALESCE(remaining_qty, 1) <= 0 THEN 'consumed'
+               WHEN COALESCE(remaining_qty, 1) < COALESCE(initial_qty, 1) THEN 'partial'
+               ELSE 'available'
+             END`
+      );
+    };
+
+    const ensureLastUsedAt = () => {
+      if (!cols.some((c) => c.name === "last_used_at")) {
+        db.run("ALTER TABLE spare_part_items ADD COLUMN last_used_at DATETIME", ensureNormalizedItems);
+        return;
+      }
+      ensureNormalizedItems();
+    };
+
+    const ensureRemainingQty = () => {
+      if (!cols.some((c) => c.name === "remaining_qty")) {
+        db.run("ALTER TABLE spare_part_items ADD COLUMN remaining_qty INTEGER DEFAULT 1", (altErr) => {
+          if (!altErr) {
+            db.run(
+              `UPDATE spare_part_items
+               SET remaining_qty = COALESCE((
+                 SELECT CASE
+                   WHEN p.unit_type IN ('box', 'pack') THEN CAST(COALESCE(p.conversion_rate, 1) AS INTEGER)
+                   ELSE 1
+                 END
+                 FROM spare_parts p
+                 WHERE p.id = spare_part_items.part_id
+               ), 1)`,
+              ensureLastUsedAt
+            );
+            return;
+          }
+          ensureLastUsedAt();
+        });
+        return;
+      }
+      ensureLastUsedAt();
+    };
+
+    if (!cols.some((c) => c.name === "initial_qty")) {
+      db.run("ALTER TABLE spare_part_items ADD COLUMN initial_qty INTEGER DEFAULT 1", ensureRemainingQty);
       return;
     }
-    ensureLastUsedAt();
-  };
 
-  if (!cols.some((c) => c.name === "initial_qty")) {
-    db.run("ALTER TABLE spare_part_items ADD COLUMN initial_qty INTEGER DEFAULT 1", ensureRemainingQty);
-    return;
-  }
+    ensureRemainingQty();
+  });
 
-  ensureRemainingQty();
-});
-
-db.all("PRAGMA table_info(movement_items)", [], (err, cols) => {
-  if (!cols) return;
-  if (!cols.some((c) => c.name === "used_qty")) {
-    db.run("ALTER TABLE movement_items ADD COLUMN used_qty INTEGER DEFAULT 1");
-  }
-  if (!cols.some((c) => c.name === "before_qty")) {
-    db.run("ALTER TABLE movement_items ADD COLUMN before_qty INTEGER DEFAULT 0");
-  }
-  if (!cols.some((c) => c.name === "after_qty")) {
-    db.run("ALTER TABLE movement_items ADD COLUMN after_qty INTEGER DEFAULT 0");
-  }
-});
+  db.all("PRAGMA table_info(movement_items)", [], (err, cols) => {
+    if (!cols) return;
+    if (!cols.some((c) => c.name === "used_qty")) {
+      db.run("ALTER TABLE movement_items ADD COLUMN used_qty INTEGER DEFAULT 1");
+    }
+    if (!cols.some((c) => c.name === "before_qty")) {
+      db.run("ALTER TABLE movement_items ADD COLUMN before_qty INTEGER DEFAULT 0");
+    }
+    if (!cols.some((c) => c.name === "after_qty")) {
+      db.run("ALTER TABLE movement_items ADD COLUMN after_qty INTEGER DEFAULT 0");
+    }
+  });
+}
 
 // API สำหรับดึงอะไหล่ทั้งหมด
 app.get("/spareparts", authenticateToken, (req, res) => {
   db.all(
-    `SELECT p.*, w.name AS warehouse_name,
-            COALESCE((
-              SELECT GROUP_CONCAT(serial_line, char(10))
-              FROM (
-                SELECT spi.serial_no || ' [' || COALESCE(spi.remaining_qty, 1) || '/' || COALESCE(spi.initial_qty, 1) || ']' AS serial_line
-                FROM spare_part_items spi
-                WHERE spi.part_id = p.id
-                ORDER BY CASE WHEN spi.status = 'partial' THEN 0 ELSE 1 END, spi.id ASC
-              )
-            ), '') AS serial_summary
+    `SELECT p.*, w.name AS warehouse_name
      FROM spare_parts p
      LEFT JOIN warehouses w ON p.warehouseId = w.id
      ORDER BY p.id DESC`,
     [],
-    (err, rows) => res.json(rows)
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      const partIds = (rows || []).map((row) => row.id);
+      fetchSerialSummaryMap(partIds, (summaryErr, summaryMap) => {
+        if (summaryErr) return res.status(500).json({ error: summaryErr.message });
+        const result = (rows || []).map((row) => ({
+          ...row,
+          serial_summary: (summaryMap.get(row.id) || []).join("\n")
+        }));
+        res.json(result);
+      });
+    }
   );
 });
 
@@ -929,22 +1011,18 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
             const insertNext = () => {
               if (insertIndex >= new_serials.length) return finalizeMovement(movementId, new_serials);
               const serialNo = new_serials[insertIndex];
-              db.run(
-                "INSERT OR IGNORE INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty) VALUES (?, ?, 'available', ?, ?)",
-                [part_id, serialNo, itemQty, itemQty],
-                function(insertErr) {
-                  if (insertErr) return rollbackWith(500, insertErr.message);
-                  if (!this.lastID) {
-                    insertIndex += 1;
-                    return insertNext();
-                  }
-                  insertMovementItem(movementId, this.lastID, itemQty, 0, itemQty, (linkErr) => {
-                    if (linkErr) return rollbackWith(500, linkErr.message);
-                    insertIndex += 1;
-                    insertNext();
-                  });
+              insertOrGetSparePartItem(part_id, serialNo, itemQty, (insertErr, result) => {
+                if (insertErr) return rollbackWith(500, insertErr.message);
+                if (!result?.created) {
+                  insertIndex += 1;
+                  return insertNext();
                 }
-              );
+                insertMovementItem(movementId, result.itemId, itemQty, 0, itemQty, (linkErr) => {
+                  if (linkErr) return rollbackWith(500, linkErr.message);
+                  insertIndex += 1;
+                  insertNext();
+                });
+              });
             };
             return insertNext();
           }
@@ -998,44 +1076,98 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
 app.post("/spareparts/transfer", authenticateToken, (req, res) => {
   const { part_id, target_warehouse_id, quantity, note } = req.body;
   const userId = req.user.userId;
+  const transferQty = Math.max(0, Number(quantity) || 0);
+
+  if (!transferQty) {
+    return res.status(400).json({ error: "Invalid quantity" });
+  }
 
   db.serialize(() => {
     db.run("BEGIN TRANSACTION");
-    // ลดจำนวนจากตัวเดิม
-    db.run("UPDATE spare_parts SET quantity = quantity - ? WHERE id = ?", [quantity, part_id], (err) => {
-      if (err) { db.run("ROLLBACK"); return res.status(500).json({ error: err.message }); }
-      
-      // ดึงข้อมูลอะไหล่เดิม
-      db.get("SELECT * FROM spare_parts WHERE id = ?", [part_id], (err, part) => {
-        if (!part) { db.run("ROLLBACK"); return res.status(404).json({ error: "Part not found" }); }
-        
-        // เพิ่มหรืออัปเดตในคลังปลายทาง
-        db.run(`INSERT INTO spare_parts (part_no, name, description, quantity, price, warehouseId) 
-                VALUES (?, ?, ?, ?, ?, ?) 
-                ON CONFLICT(part_no, warehouseId) DO UPDATE SET quantity = quantity + excluded.quantity`,
-          [part.part_no, part.name, part.description, quantity, part.price, target_warehouse_id], function(err) {
-            if (err) { db.run("ROLLBACK"); return res.status(500).json({ error: err.message }); }
-            
-            db.run("COMMIT");
 
-            db.get("SELECT name FROM warehouses WHERE id = ?", [target_warehouse_id], (wErr, targetWarehouse) => {
-              if (!wErr) {
-                sendTeamsNotification({
-                  type: "TRANSFER",
-                  partName: part.name,
-                  quantity: Number(quantity) || 0,
-                  user: req.user?.username || "System",
-                  warehouse: targetWarehouse?.name || String(target_warehouse_id),
-                  note: note || "-"
-                });
-              }
-            });
+    db.get("SELECT * FROM spare_parts WHERE id = ?", [part_id], (partErr, part) => {
+      if (partErr) {
+        db.run("ROLLBACK");
+        return res.status(500).json({ error: partErr.message });
+      }
+      if (!part) {
+        db.run("ROLLBACK");
+        return res.status(404).json({ error: "Part not found" });
+      }
 
-            logActivity(userId, "TRANSFER", `Transferred ${quantity} of ${part.part_no} to warehouse ${target_warehouse_id}`);
-            res.json({ message: "Transfer completed" });
+      const conversionRate = Math.max(1, Number(part.conversion_rate) || 1);
+      const pieceDelta = (part.unit_type === "box" || part.unit_type === "pack")
+        ? Math.round(transferQty * conversionRate)
+        : transferQty;
+
+      db.run(
+        `UPDATE spare_parts
+         SET quantity = quantity - ?,
+             piece_stock = CASE
+               WHEN COALESCE(piece_stock, quantity) - ? < 0 THEN 0
+               ELSE COALESCE(piece_stock, quantity) - ?
+             END
+         WHERE id = ?`,
+        [transferQty, pieceDelta, pieceDelta, part_id],
+        (updateErr) => {
+          if (updateErr) {
+            db.run("ROLLBACK");
+            return res.status(500).json({ error: updateErr.message });
           }
-        );
-      });
+
+          db.get(
+            "SELECT * FROM spare_parts WHERE part_no = ? AND warehouseId = ?",
+            [part.part_no, target_warehouse_id],
+            (targetErr, targetPart) => {
+              if (targetErr) {
+                db.run("ROLLBACK");
+                return res.status(500).json({ error: targetErr.message });
+              }
+
+              const onTransferSaved = (saveErr) => {
+                if (saveErr) {
+                  db.run("ROLLBACK");
+                  return res.status(500).json({ error: saveErr.message });
+                }
+
+                db.run("COMMIT");
+
+                db.get("SELECT name FROM warehouses WHERE id = ?", [target_warehouse_id], (wErr, targetWarehouse) => {
+                  if (!wErr) {
+                    sendTeamsNotification({
+                      type: "TRANSFER",
+                      partName: part.name,
+                      quantity: transferQty,
+                      user: req.user?.username || "System",
+                      warehouse: targetWarehouse?.name || String(target_warehouse_id),
+                      note: note || "-"
+                    });
+                  }
+                });
+
+                logActivity(userId, "TRANSFER", `Transferred ${transferQty} of ${part.part_no} to warehouse ${target_warehouse_id}`);
+                res.json({ message: "Transfer completed" });
+              };
+
+              if (targetPart) {
+                db.run(
+                  "UPDATE spare_parts SET quantity = quantity + ?, piece_stock = COALESCE(piece_stock, quantity) + ? WHERE id = ?",
+                  [transferQty, pieceDelta, targetPart.id],
+                  onTransferSaved
+                );
+                return;
+              }
+
+              db.run(
+                `INSERT INTO spare_parts (part_no, name, description, quantity, unit_type, conversion_rate, piece_stock, price, warehouseId)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [part.part_no, part.name, part.description, transferQty, part.unit_type || "piece", conversionRate, pieceDelta, part.price, target_warehouse_id],
+                onTransferSaved
+              );
+            }
+          );
+        }
+      );
     });
   });
 });
@@ -1107,8 +1239,11 @@ const server = app.listen(PORT, "0.0.0.0", () => {
 
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {
-    console.error(`❌ PORT ${PORT} IS BUSY. Please close running servers.`);
-    process.exit(1);
+    console.warn(`⚠️ PORT ${PORT} is already in use. Existing server is likely running, so this process will exit gracefully.`);
+    process.exit(0);
+    return;
   }
+  console.error("Server start failed:", e.message);
+  process.exit(1);
 });
 process.stdin.resume();

@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "check:mssql": "node check_mssql_connection.js",
+    "migrate:mssql": "node scripts/migrate_sqlite_to_mssql.js",
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,6 +17,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "mssql": "^11.0.1",
     "sqlite3": "^5.1.7"
   }
 }
