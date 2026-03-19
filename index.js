@@ -440,6 +440,44 @@ app.get("/users", authenticateToken, requireRole(["admin"]), (req, res) => {
   db.all("SELECT id, username, role FROM users", [], (err, rows) => res.json(rows));
 });
 
+app.put("/users/:id/reset-password", authenticateToken, requireRole(["admin"]), (req, res) => {
+  const id = Number(req.params.id);
+  const { password } = req.body || {};
+
+  if (!id || !password) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  bcrypt.hash(password, 10, (hashErr, hashedPassword) => {
+    if (hashErr) return res.status(500).json({ error: hashErr.message });
+
+    db.run("UPDATE users SET password = ? WHERE id = ?", [hashedPassword, id], function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      if (this.changes === 0) return res.status(404).json({ error: "User not found" });
+
+      logActivity(req.user.userId, "RESET_PASSWORD", `Reset password for user ID ${id}`);
+      res.json({ message: "Password reset successfully" });
+    });
+  });
+});
+
+app.delete("/users/:id", authenticateToken, requireRole(["admin"]), (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Invalid user id" });
+
+  if (req.user?.userId === id) {
+    return res.status(400).json({ error: "Cannot delete your own account" });
+  }
+
+  db.run("DELETE FROM users WHERE id = ?", [id], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (this.changes === 0) return res.status(404).json({ error: "User not found" });
+
+    logActivity(req.user.userId, "DELETE_USER", `Deleted user ID ${id}`);
+    res.json({ message: "User deleted successfully" });
+  });
+});
+
 app.get("/report/value", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
   let sql = "SELECT SUM(quantity * price) AS stock_value FROM spare_parts";
