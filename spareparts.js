@@ -160,13 +160,13 @@ function editPart(id) {
   tr.innerHTML = `
     <td>${index + 1}</td>
     <td>${part.id}</td>
-    <td><input type="text" id="edit-name-${id}" value="${part.name}" style="width:150px;"></td>
-    <td><input type="text" id="edit-part_no-${id}" value="${part.part_no}" style="width:100px;"></td>
-    <td><input type="text" id="edit-desc-${id}" value="${part.description || ""}" style="width:200px;"></td>
+    <td><input type="text" id="edit-name-${id}" value="${escapeHtml(part.name)}" style="width:150px;"></td>
+    <td><input type="text" id="edit-part_no-${id}" value="${escapeHtml(part.part_no)}" style="width:100px;"></td>
+    <td><input type="text" id="edit-desc-${id}" value="${escapeHtml(part.description || "")}" style="width:200px;"></td>
     <td><input type="number" id="edit-qty-${id}" value="${part.quantity}" style="width:60px;"></td>
     <td class="serial-status-cell">${renderSerialSummaryHtml(part.serial_summary)}</td>
     <td><input type="number" id="edit-price-${id}" value="${part.price ?? 0}" style="width:80px;"></td>
-    <td>${part.warehouse_name || "-"}</td>
+    <td>${escapeHtml(part.warehouse_name || "-")}</td>
     <td>
       <div class="row-actions">
         <button onclick="saveInlineEdit(${id})" class="btn btn-sm btn-success" data-i18n="save">Save</button>

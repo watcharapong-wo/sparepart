@@ -1,6 +1,15 @@
 // logs.js
 let currentLogsCache = [];
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 async function loadLogs(filters = {}) {
   const token = localStorage.getItem("token");
   if (!token) {
@@ -30,7 +39,7 @@ async function loadLogs(filters = {}) {
         const row = tbody.insertRow();
         row.insertCell(0).textContent = new Date(log.timestamp).toLocaleString();
         row.insertCell(1).textContent = log.username || '-';
-        row.insertCell(2).innerHTML = `<span class="badge ${getBadgeClass(log.action)}">${log.action}</span>`;
+        row.insertCell(2).innerHTML = `<span class="badge ${getBadgeClass(log.action)}">${escapeHtml(log.action)}</span>`;
         row.insertCell(3).textContent = log.details || '-';
       });
     } else {
@@ -52,7 +61,7 @@ function getBadgeClass(action) {
 function updateUserInfo() {
     const username = localStorage.getItem('username');
     const role = localStorage.getItem('role');
-    const userDisplay = document.getElementById('user-display');
+    const userDisplay = document.getElementById('user-status');
     if (userDisplay && username && role) {
         userDisplay.textContent = `User: ${username} (${role.toUpperCase()})`;
     }

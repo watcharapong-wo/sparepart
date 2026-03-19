@@ -76,11 +76,11 @@ async function loadDashboard() {
         tableBody.innerHTML = movements.slice(0, 5).map(m => `
           <tr>
             <td>${formatDate(m.movement_date)}</td>
-            <td>${m.movement_type} ${m.quantity}</td>
-            <td>${m.part_name || '-'}</td>
-            <td>${m.partType || m.part_no || '-'}</td>
-            <td>${m.note || m.department || m.receiver || '-'}</td>
-            <td><span class="badge" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; font-size: 11px; padding: 2px 6px; border-radius: 4px;">${m.username || '-'}</span></td>
+            <td>${escapeHtml(m.movement_type)} ${m.quantity}</td>
+            <td>${escapeHtml(m.part_name || '-')}</td>
+            <td>${escapeHtml(m.partType || m.part_no || '-')}</td>
+            <td>${escapeHtml(m.note || m.department || m.receiver || '-')}</td>
+            <td><span class="badge" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; font-size: 11px; padding: 2px 6px; border-radius: 4px;">${escapeHtml(m.username || '-')}</span></td>
           </tr>
         `).join('');
       }
