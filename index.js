@@ -759,28 +759,44 @@ app.delete("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "Invalid part id" });
 
-  db.serialize(() => {
-    db.run("BEGIN TRANSACTION");
+  // Fetch part details before deleting so we can notify Teams
+  db.get("SELECT sp.name, sp.part_no, sp.quantity, w.name AS warehouse_name FROM spare_parts sp LEFT JOIN warehouses w ON sp.warehouseId = w.id WHERE sp.id = ?", [id], (fetchErr, part) => {
+    if (fetchErr) return res.status(500).json({ error: fetchErr.message });
+    if (!part) return res.status(404).json({ error: "Part not found" });
 
-    db.run("DELETE FROM spare_part_items WHERE part_id = ?", [id], (err) => {
-      if (err) {
-        db.run("ROLLBACK");
-        return res.status(500).json({ error: err.message });
-      }
+    db.serialize(() => {
+      db.run("BEGIN TRANSACTION");
 
-      db.run("DELETE FROM spare_parts WHERE id = ?", [id], function (err2) {
-        if (err2) {
+      db.run("DELETE FROM spare_part_items WHERE part_id = ?", [id], (err) => {
+        if (err) {
           db.run("ROLLBACK");
-          return res.status(500).json({ error: err2.message });
-        }
-        if (this.changes === 0) {
-          db.run("ROLLBACK");
-          return res.status(404).json({ error: "Part not found" });
+          return res.status(500).json({ error: err.message });
         }
 
-        db.run("COMMIT");
-        logActivity(req.user.userId, "DELETE_SPARE_PART", `Deleted part ID ${id}`);
-        res.json({ message: "Spare part deleted" });
+        db.run("DELETE FROM spare_parts WHERE id = ?", [id], function (err2) {
+          if (err2) {
+            db.run("ROLLBACK");
+            return res.status(500).json({ error: err2.message });
+          }
+          if (this.changes === 0) {
+            db.run("ROLLBACK");
+            return res.status(404).json({ error: "Part not found" });
+          }
+
+          db.run("COMMIT");
+          logActivity(req.user.userId, "DELETE_SPARE_PART", `Deleted part ${part.name} (${part.part_no}) ID ${id}`);
+
+          sendTeamsNotification({
+            type: "DELETE",
+            partName: part.name,
+            quantity: part.quantity,
+            user: req.user?.username || "System",
+            warehouse: part.warehouse_name || "-",
+            note: `Part No: ${part.part_no}`
+          });
+
+          res.json({ message: "Spare part deleted" });
+        });
       });
     });
   });

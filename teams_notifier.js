@@ -28,6 +28,7 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
     'RETURN': '🔄',
     'TRANSFER': '🔁',
     'NEW': '📦',
+    'DELETE': '🗑️',
     'LOW_STOCK': '⚠️',
     'REMINDER': '⏰'
   }[type] || '🔔';
@@ -35,10 +36,12 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
   const qtyValue = quantity ?? qty;
   const serialValue = serialNos ?? spNo;
 
-  const titleText = type === 'LOW_STOCK' 
-    ? `⚠️ CRITICAL: Low Stock Alert!` 
+  const titleText = type === 'LOW_STOCK'
+    ? `⚠️ CRITICAL: Low Stock Alert!`
     : type === 'REMINDER'
     ? `⏰ OVERDUE REMINDER: Return Required`
+    : type === 'DELETE'
+    ? `🗑️ Spare Part Deleted`
     : `${typeEmoji} Stock Movement: ${type}`;
   const timestamp = new Date().toLocaleString('th-TH');
 
