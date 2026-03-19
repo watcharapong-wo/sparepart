@@ -614,12 +614,12 @@ app.get("/report/top-parts-by-warehouse", authenticateToken, (req, res) => {
     return res.json([]);
   }
   
-  const sql = `SELECT TOP 5 p.id, p.part_no, p.name, p.quantity, ISNULL(SUM(m.quantity), 0) as total_consumed 
+  const sql = `SELECT p.id, p.part_no, p.name, p.quantity, COALESCE(SUM(m.quantity), 0) as total_consumed 
                FROM spare_parts p 
                LEFT JOIN stock_movements m ON p.id = m.part_id AND m.movement_type IN ('OUT', 'BORROW')
                WHERE p.warehouseId = ?
                GROUP BY p.id, p.part_no, p.name, p.quantity
-               ORDER BY total_consumed DESC`;
+               ORDER BY total_consumed DESC ${sqlDialect.limit(5)}`;
   
   db.all(sql, [warehouseId], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
