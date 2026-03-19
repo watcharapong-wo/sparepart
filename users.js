@@ -1,3 +1,12 @@
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 document.addEventListener("DOMContentLoaded", function() {
   const role = localStorage.getItem("role");
   if (role !== "admin") {
@@ -123,8 +132,8 @@ async function loadUsers() {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${user.id}</td>
-        <td>${user.username}</td>
-        <td><span class="badge badge-${user.role}">${user.role}</span></td>
+        <td>${escapeHtml(user.username)}</td>
+        <td><span class="badge badge-${escapeHtml(user.role)}">${escapeHtml(user.role)}</span></td>
         <td class="actions-cell">
           <button class="btn btn-sm" style="background-color: #3b82f6; color: white;" onclick="resetPassword(${user.id})">Reset</button>
           <button class="btn btn-danger btn-sm" onclick="deleteUser(${user.id})" data-i18n="delete">Delete</button>
@@ -139,15 +148,11 @@ async function loadUsers() {
 }
 
 async function deleteUser(id) {
-  console.log("deleteUser called for ID:", id);
-  // Removed confirm temporarily to bypass environment blockage
-  console.log("Proceeding with deletion (confirm bypassed for debugging)...");
-  
+  if (!confirm("Are you sure you want to delete this user?")) return;
   const token = localStorage.getItem("token");
   try {
-    console.log("Calling deleteData for user:", id);
-    const result = await deleteData(`/users/${id}`, token);
-    console.log("Delete result:", result);
+    await deleteData(`/users/${id}`, token);
+    showToast("User deleted", "success");
     loadUsers();
   } catch (err) {
     console.error("deleteUser error:", err);

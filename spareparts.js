@@ -123,13 +123,13 @@ function renderSparePartsTable(data) {
         tr.innerHTML = `
           <td>${index + 1}</td>
           <td>${p.id}</td>
-          <td>${p.name}</td>
-          <td>${p.part_no}</td>
-          <td>${p.description || ""}</td>
+          <td>${escapeHtml(p.name)}</td>
+          <td>${escapeHtml(p.part_no)}</td>
+          <td>${escapeHtml(p.description || "")}</td>
           <td>${p.quantity}</td>
           <td class="serial-status-cell">${serialSummary}</td>
           <td class="cell-price">${p.price ?? ""}</td>
-          <td>${p.warehouse_name || "-"}</td>
+          <td>${escapeHtml(p.warehouse_name || "-")}</td>
           <td>
             <div class="row-actions">
               <button onclick="editPart(${p.id})" class="btn btn-sm btn-primary" data-i18n="edit">Edit</button>
@@ -305,9 +305,8 @@ document.addEventListener("DOMContentLoaded", () => {
       loadSpareParts();
     } catch (err) {
       console.error("Save failed:", err);
-      if (err.status === 409) {
-        const errorData = await err.response.json();
-        showToast(`Duplicate SP no: ${errorData.serial}`, "error");
+      if (err.message && err.message.includes("409")) {
+        showToast(err.message.includes("serial") ? err.message : "Duplicate SP no detected", "error");
       } else {
         showToast(translations[currentLang].saveError || "Failed to save part", "error");
       }

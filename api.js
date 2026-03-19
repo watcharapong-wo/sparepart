@@ -140,8 +140,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const logoutUser = () => {
       localStorage.clear();
-      alert("You have been logged out due to inactivity.");
-      window.location.href = "login.html";
+      if (typeof showToast === "function") {
+        showToast("You have been logged out due to inactivity.", "warning");
+        setTimeout(() => { window.location.href = "login.html"; }, 1500);
+      } else {
+        window.location.href = "login.html";
+      }
     };
 
     const resetInactivityTimer = () => {

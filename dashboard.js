@@ -1,5 +1,14 @@
 // dashboard.js uses global fetchData and API_URL from api.js
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function formatDate(isoString) {
   if (!isoString) return "-";
   const d = new Date(isoString);
@@ -67,7 +76,7 @@ async function loadDashboard() {
         tableBody.innerHTML = movements.slice(0, 5).map(m => `
           <tr>
             <td>${formatDate(m.movement_date)}</td>
-            <td>${m.movement_type === 'OUT' ? 'OUT' : 'IN'} ${m.quantity}</td>
+            <td>${m.movement_type} ${m.quantity}</td>
             <td>${m.part_name || '-'}</td>
             <td>${m.partType || m.part_no || '-'}</td>
             <td>${m.note || m.department || m.receiver || '-'}</td>
@@ -80,7 +89,7 @@ async function loadDashboard() {
       if (trends) renderTrendChart(trends);
       if (monthlyData) renderMonthlyChart(monthlyData);
       if (warehouseValue) renderWarehouseChart(warehouseValue);
-      if (accountData) renderAccountChart(accountData);
+      if (accountData) renderAccountChart(accountData, warehouseId);
 
       // Populate Expense & Out Stats
       let totalExp = 0;
@@ -228,8 +237,8 @@ async function loadOverdueAlerts() {
         html += `
           <div style="font-size: 13px; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(239, 68, 68, 0.1); display: flex; justify-content: space-between; align-items: center;">
             <div>
-              <strong style="color: var(--text-color);">${item.receiver}</strong><br>
-              <span style="color: var(--text-secondary); font-size: 11px;">${item.part_name}</span>
+              <strong style="color: var(--text-color);">${escapeHtml(item.receiver)}</strong><br>
+              <span style="color: var(--text-secondary); font-size: 11px;">${escapeHtml(item.part_name)}</span>
             </div>
             <div style="text-align: right;">
               <span style="color: var(--danger); font-weight: 600;">${diffDays} <span data-i18n="daysOverdue">Days</span></span>
@@ -248,7 +257,7 @@ async function loadOverdueAlerts() {
   }
 }
 
-function renderAccountChart(data) {
+function renderAccountChart(data, warehouseId) {
   const chartEl = document.getElementById("account-chart");
   if (!chartEl) return;
   const ctx = chartEl.getContext("2d");
@@ -278,7 +287,7 @@ function renderAccountChart(data) {
       }
     }
   });
-  loadInsights(warehouseId);
+  loadInsights(warehouseId || document.getElementById("warehouse-filter")?.value || 'all');
 }
 
 async function loadInsights(warehouseId) {
@@ -335,6 +344,6 @@ async function exportInventory() {
     a.remove();
   } catch (err) {
     console.error("Export error:", err);
-    alert("Export failed: " + err.message);
+    if (typeof showToast === "function") showToast("Export failed: " + err.message, "error");
   }
 }
