@@ -589,9 +589,10 @@ app.get("/report/monthly-comparison", authenticateToken, (req, res) => {
 
 app.get("/report/withdraw-by-account", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT m.receiver, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_type IN ('OUT', 'BORROW') AND m.receiver IS NOT NULL GROUP BY m.receiver ORDER BY total_qty DESC ${sqlDialect.limit(10)}`;
+  let sql = `SELECT m.receiver, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_type IN ('OUT', 'BORROW') AND m.receiver IS NOT NULL`;
   const params = [];
   if (warehouseId && warehouseId !== 'all') { sql += " AND p.warehouseId = ?"; params.push(warehouseId); }
+  sql += ` GROUP BY m.receiver ORDER BY total_qty DESC ${sqlDialect.limit(10)}`;
   db.all(sql, params, (err, rows) => res.json(rows));
 });
 
