@@ -79,7 +79,7 @@ async function main() {
       name: 'Transfer Source Part',
       description: 'Part for transfer test',
       quantity: 5,
-      unit_type: 'piece',
+      unit_type: 'PC',
       conversion_rate: 1,
       price: 500,
       warehouseId: 1,

@@ -214,11 +214,21 @@ async function deletePart(id) {
   if (!confirm(translations[currentLang].confirmDelete || "Are you sure you want to delete this item?")) return;
   try {
     const token = localStorage.getItem("token");
-    await deleteData(`/spareparts/${id}`, token);
-    showToast(translations[currentLang].deleteSuccess || "Deleted successfully", "success");
+    const result = await deleteData(`/spareparts/${id}`, token);
+    // Show custom success if force deleted by admin
+    if (result && result.message && result.message.includes("force deleted by admin")) {
+      showToast("ลบอะไหล่สำเร็จ (ลบข้อมูลที่เกี่ยวข้องทั้งหมดโดยผู้ดูแลระบบ)", "success");
+    } else {
+      showToast(translations[currentLang].deleteSuccess || "Deleted successfully", "success");
+    }
     loadSpareParts();
   } catch (err) {
-    showToast(translations[currentLang].deleteError || "Failed to delete", "error");
+    // Custom error handling for movement history constraint
+    if (err.message && err.message.includes("used in movement history")) {
+      showToast("ไม่สามารถลบอะไหล่ได้ เนื่องจากมีประวัติการเคลื่อนไหวในระบบ (Movement History) กรุณาลบประวัติที่เกี่ยวข้องก่อน", "error");
+    } else {
+      showToast(translations[currentLang].deleteError || "Failed to delete", "error");
+    }
   }
 }
 
@@ -301,7 +311,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const name = document.getElementById("add-name").value;
       const description = document.getElementById("add-description").value;
       const quantity = parseInt(document.getElementById("add-quantity").value) || 0;
-      const unit_type = document.getElementById("add-unit-type")?.value || "piece";
+      const unit_type = document.getElementById("add-unit-type")?.value || "PC";
       const conversion_rate = parseFloat(document.getElementById("add-conversion-rate")?.value) || 1;
       const price = parseFloat(document.getElementById("add-price").value) || 0;
       const warehouseId = document.getElementById("add-warehouse-select").value;
@@ -315,8 +325,8 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      if ((unit_type === "box" || unit_type === "pack") && serials.length !== quantity) {
-        showToast("For box/pack, SP no count must equal quantity", "error");
+      if ((unit_type === "BOX" || unit_type === "PAC") && serials.length !== quantity) {
+        showToast("For BOX/PAC, SP no count must equal quantity", "error");
         setButtonLoading(submitBtn, false);
         return;
       }
@@ -365,7 +375,7 @@ document.addEventListener("DOMContentLoaded", () => {
       Name: item.name,
       Description: item.description,
       Quantity: item.quantity,
-      UnitType: item.unit_type || "piece",
+      UnitType: item.unit_type || "PC",
       ConversionRate: item.conversion_rate || 1,
       Price: item.price,
       Warehouse: item.warehouse_name || "-"

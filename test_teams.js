@@ -28,7 +28,7 @@ if (!process.env.TEAMS_WEBHOOK_URL) {
 }
 
 sendTeamsNotification({
-  type: 'NEW',
+  type: 'OUT',
   partName: 'Test Part (Antigravity)',
   quantity: 1,
   user: 'Test User',

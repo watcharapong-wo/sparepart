@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>User Management - it Spare part System</title>
+  <title>User Management - IT Spare Part System</title>
   <link rel="icon" type="image/png" href="public/assets/images/logo.png">
   <link rel="stylesheet" href="styles.css?v=1.3">
 </head>
 <body>
   <nav class="navbar">
-    <div class="nav-brand">it Spare part System <span data-i18n="manageUsers">- Manage Users</span></div>
+    <div class="nav-brand">IT Spare Part System <span data-i18n="manageUsers">- Manage Users</span></div>
     <div class="nav-links">
       <a href="dashboard.html" data-i18n="dashboard">Dashboard</a>
       <a href="movements.html" data-i18n="movements">Movements</a>
@@ -26,25 +26,25 @@
       <!-- Add User Form -->
       <div class="card">
         <div class="card-title" data-i18n="manageUsers">Manage Users</div>
-        <form id="add-user-form" class="form-grid" style="grid-template-columns: 1fr;">
+        <form id="add-user-form" class="form-grid user-form-single-column">
           <div class="stacked-form-group">
-            <label data-i18n="username">Username:</label>
-            <input type="text" id="reg-username" required>
+            <label for="reg-username" data-i18n="username">Username:</label>
+            <input type="text" id="reg-username" title="Username" placeholder="Enter username" required>
           </div>
           <div class="stacked-form-group">
-            <label data-i18n="password">Password:</label>
-            <input type="password" id="reg-password" required>
+            <label for="reg-password" data-i18n="password">Password:</label>
+            <input type="password" id="reg-password" title="Password" placeholder="Enter password" required>
           </div>
           <div class="stacked-form-group">
-            <label data-i18n="role">Role:</label>
-            <select id="reg-role" required>
+            <label for="reg-role" data-i18n="role">Role:</label>
+            <select id="reg-role" title="Role" required>
               <option value="viewer">Viewer</option>
               <option value="staff">Staff</option>
               <option value="co-admin">Co-Admin</option>
               <option value="admin">Admin</option>
             </select>
           </div>
-          <div class="form-actions" style="margin-top: 8px;">
+          <div class="form-actions form-actions-compact">
             <button type="submit" class="btn btn-primary" data-i18n="submit">Create User</button>
           </div>
         </form>

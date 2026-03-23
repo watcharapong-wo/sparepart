@@ -11,7 +11,147 @@ function i18nText(key, fallback = "") {
   return translations?.[currentLang]?.[key] || fallback;
 }
 
-// แสดงข้อมูลหน่วย/ชิ้น เมื่อ part เป็นประเภท box/pack
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function escapeRegExp(value) {
+  return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function highlightMatches(value, searchTerm) {
+  const rawValue = String(value ?? "");
+  const tokens = String(searchTerm || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (tokens.length === 0) return escapeHtml(rawValue);
+
+  const regex = new RegExp(`(${tokens.map(escapeRegExp).join("|")})`, "ig");
+  const tokenSet = new Set(tokens.map((token) => token.toLowerCase()));
+
+  return rawValue
+    .split(regex)
+    .map((segment) => {
+      if (tokenSet.has(segment.toLowerCase())) {
+        return `<mark class="part-search-highlight">${escapeHtml(segment)}</mark>`;
+      }
+      return escapeHtml(segment);
+    })
+    .join("");
+}
+
+function tokenizeSearchTerm(searchTerm) {
+  return String(searchTerm || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+function formatSelectedPartSearchValue(part) {
+  if (!part) return "";
+  const name = String(part.name || "").trim();
+  const warehouse = String(part.warehouse_name || "-").trim();
+  const partRef = String(part.partType || part.part_no || "-").trim();
+  return `${name} | ${warehouse} | ${partRef}`;
+}
+
+function getStockState(quantity) {
+  const numericQuantity = Number(quantity) || 0;
+  if (numericQuantity <= 0) return "danger";
+  if (numericQuantity <= 3) return "warning";
+  return "healthy";
+}
+
+function normalizeUnitType(unitType) {
+  const normalized = String(unitType || "PC").trim().toUpperCase();
+  if (normalized === "PIECE") return "PC";
+  if (normalized === "PACK") return "PAC";
+  if (normalized === "ROLL") return "ROL";
+  return ["M", "PC", "PAC", "BOX", "ROL"].includes(normalized) ? normalized : "PC";
+}
+
+function isPackUnitType(unitType) {
+  return ["BOX", "PAC"].includes(normalizeUnitType(unitType));
+}
+
+let existingSerialLookup = new Set();
+let existingSerialRows = [];
+
+function setExistingSerialLookup(serialRows) {
+  existingSerialRows = Array.isArray(serialRows) ? serialRows : [];
+  existingSerialLookup = new Set(
+    existingSerialRows
+      .map((row) => String(row?.serial_no || "").trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+function findExistingSerialConflicts(serialLines) {
+  return (Array.isArray(serialLines) ? serialLines : [])
+    .map((line) => String(line || "").trim())
+    .filter(Boolean)
+    .filter((line) => existingSerialLookup.has(line.toLowerCase()));
+}
+
+function renderSelectedPartSummary(part) {
+  const summary = document.getElementById("part-selection-summary");
+  if (!summary) return;
+
+  if (!part) {
+    summary.hidden = true;
+    summary.innerHTML = "";
+    return;
+  }
+
+  const partCode = escapeHtml(part.partType || part.part_no || "-");
+  const description = escapeHtml(part.description || "-");
+  const warehouseName = escapeHtml(part.warehouse_name || "-");
+  const unitType = escapeHtml(normalizeUnitType(part.unit_type));
+  const quantity = escapeHtml(part.quantity ?? 0);
+  const pieceStock = escapeHtml(part.piece_stock ?? part.quantity ?? 0);
+
+  summary.innerHTML = `
+    <div class="part-summary-header">
+      <strong>${escapeHtml(part.name || "-")}</strong>
+      <span class="part-summary-badge">${partCode}</span>
+    </div>
+    <div class="part-summary-grid">
+      <div><span class="part-summary-label">Description</span><span>${description}</span></div>
+      <div><span class="part-summary-label">Warehouse</span><span>${warehouseName}</span></div>
+      <div><span class="part-summary-label">Unit Type</span><span>${unitType}</span></div>
+      <div><span class="part-summary-label">Stock</span><span>${quantity}</span></div>
+      <div><span class="part-summary-label">Piece Stock</span><span>${pieceStock}</span></div>
+      <div><span class="part-summary-label">Part Ref</span><span>${partCode}</span></div>
+    </div>
+  `;
+  summary.hidden = false;
+}
+
+function renderPartSelectionWarning(message) {
+  const warning = document.getElementById("part-selection-warning");
+  if (!warning) return;
+
+  if (!message) {
+    warning.hidden = true;
+    warning.innerHTML = "";
+    return;
+  }
+
+  warning.innerHTML = `<strong>Check before selecting:</strong> ${escapeHtml(message)}`;
+  warning.hidden = false;
+}
+
+// แสดงข้อมูลหน่วย/ชิ้น เมื่อ part เป็นประเภท BOX/PAC
 function updatePieceStockInfo(part) {
   const infoDiv = document.getElementById("piece-stock-info");
   const qtyLabel = document.getElementById("quantity-label");
@@ -30,7 +170,8 @@ function updatePieceStockInfo(part) {
     return;
   }
 
-  const isPackUnit = part.unit_type === "box" || part.unit_type === "pack";
+  const unitType = normalizeUnitType(part.unit_type);
+  const isPackUnit = isPackUnitType(unitType);
   const convRate = Math.max(1, Number(part.conversion_rate) || 1);
   const pieceStock = Number(part.piece_stock) || 0;
   const boxStock = Number(part.quantity) || 0;
@@ -38,9 +179,9 @@ function updatePieceStockInfo(part) {
   if (isPackUnit && movementType !== "TRANSFER") {
     if (movementType === "IN") {
       setSectionVisible(infoDiv, true, "block");
-      infoDiv.textContent = i18nText("packInfoCurrent", "Current").replace("{boxes}", boxStock).replace("{unit}", part.unit_type).replace("{pieces}", pieceStock);
+      infoDiv.textContent = i18nText("packInfoCurrent", "Current").replace("{boxes}", boxStock).replace("{unit}", unitType).replace("{pieces}", pieceStock);
       if (qtyLabel) {
-        qtyLabel.textContent = part.unit_type === "box"
+        qtyLabel.textContent = unitType === "BOX"
           ? i18nText("qtyAddBox", "Boxes to add")
           : i18nText("qtyAddPack", "Packs to add");
       }
@@ -48,7 +189,7 @@ function updatePieceStockInfo(part) {
     } else {
       // OUT / BORROW / RETURN — ระบุเป็น "ชิ้น"
       setSectionVisible(infoDiv, true, "block");
-      infoDiv.textContent = i18nText("packInfoRemaining", "Remaining").replace("{pieces}", pieceStock).replace("{boxes}", boxStock).replace("{unit}", part.unit_type).replace("{rate}", convRate);
+      infoDiv.textContent = i18nText("packInfoRemaining", "Remaining").replace("{pieces}", pieceStock).replace("{boxes}", boxStock).replace("{unit}", unitType).replace("{rate}", convRate);
       if (qtyLabel) { qtyLabel.textContent = i18nText("qtyRequestedPiece", "Requested pieces"); }
       if (qtyInput) { qtyInput.max = String(pieceStock); qtyInput.min = "1"; }
     }
@@ -68,6 +209,7 @@ function setMovementType(type) {
   if (form && el) {
     form.reset();
     el.value = type;
+    resetPartSelectionState();
 
     // ซ่อน serial groups ทุกครั้งเมื่อเปลี่ยน type
     const serialGroup = document.getElementById("serial-selection-group");
@@ -81,27 +223,27 @@ function setMovementType(type) {
     setSectionVisible(dueDateGroup, type === "BORROW", "flex");
     if (dueDateInput && type !== "BORROW") dueDateInput.value = "";
 
-    // อัปเดต piece-stock info & quantity label ตาม movement type
-    const partId = document.getElementById("part-select")?.value;
-    if (partId) {
-      const currentPart = cachedParts.find(p => String(p.id) === String(partId));
-      updatePieceStockInfo(currentPart || null);
-      fetchSerials(partId);
-    } else {
-      updatePieceStockInfo(null);
-    }
+    // รีเซ็ตให้เลือก part ใหม่ทุกครั้ง
+    updatePieceStockInfo(null);
 
     if (type === "TRANSFER") loadTargetWarehouses();
   }
 }
 
 document.getElementById("movement-type")?.addEventListener("change", async function() {
+  resetPartSelectionState();
+
     const dueDateGroup = document.getElementById("due-date-group");
     const dueDateInput = document.getElementById("due-date");
     const targetWhGroup = document.getElementById("target-warehouse-group");
+  const serialGroup = document.getElementById("serial-selection-group");
+  const inSerialGroup = document.getElementById("in-serials-group");
     
     const isBorrow = this.value === "BORROW";
     const isTransfer = this.value === "TRANSFER";
+
+  setSectionVisible(serialGroup, false);
+  setSectionVisible(inSerialGroup, false);
 
     if (dueDateGroup) {
       setSectionVisible(dueDateGroup, isBorrow, "flex");
@@ -113,12 +255,7 @@ document.getElementById("movement-type")?.addEventListener("change", async funct
       if (isTransfer) await loadTargetWarehouses();
     }
 
-    // อัปเดต piece-stock info เมื่อ movement type เปลี่ยน
-    const partId = document.getElementById("part-select")?.value;
-    if (partId) {
-      const currentPart = cachedParts.find(p => String(p.id) === String(partId));
-      updatePieceStockInfo(currentPart || null);
-    }
+    updatePieceStockInfo(null);
 });
 
 async function loadTargetWarehouses() {
@@ -141,22 +278,35 @@ async function loadTargetWarehouses() {
   }
 }
 
-document.getElementById("part-select")?.addEventListener("change", function() {
+document.getElementById("part-select")?.addEventListener("change", function(event) {
+    const isAutocompleteSelection = this.dataset.selectionSource === "autocomplete";
+    const isManualSelection = Boolean(event?.isTrusted) || isAutocompleteSelection;
+    this.dataset.selectionSource = "";
+    this.dataset.manualSelection = isManualSelection ? "true" : "false";
+    if (isManualSelection) {
+      closePartAutocomplete();
+    }
     const partId = this.value;
     const sparepartNoInput = document.getElementById("sparepart-no");
     // หา part_no จาก cachedParts
     const part = cachedParts.find(p => String(p.id) === String(partId));
-    if (sparepartNoInput && part) sparepartNoInput.value = part.partType || part.part_no || "";
+    if (sparepartNoInput) sparepartNoInput.value = part ? (part.partType || part.part_no || "") : "";
+    const warehouseSelect = document.getElementById("reason-select");
+    if (warehouseSelect && isManualSelection) {
+      warehouseSelect.dataset.manualSelection = "false";
+    }
   syncWarehouseByPart(part || null);
     // อัปเดต unit-type, conversion-rate และ piece-stock info จาก part ที่เลือก
     if (part) {
       const unitTypeEl = document.getElementById("unit-type");
       const convRateEl = document.getElementById("conversion-rate");
-      if (unitTypeEl) unitTypeEl.value = part.unit_type || "piece";
+      if (unitTypeEl) unitTypeEl.value = normalizeUnitType(part.unit_type);
       if (convRateEl) convRateEl.value = part.conversion_rate || 1;
       updatePieceStockInfo(part);
+      renderSelectedPartSummary(part);
     } else {
       updatePieceStockInfo(null);
+      renderSelectedPartSummary(null);
     }
     fetchSerials(partId);
 });
@@ -169,10 +319,10 @@ async function fetchSerials(partId) {
   const qtyInput = document.getElementById("quantity");
   const type = document.getElementById("movement-type").value;
   const part = cachedParts.find(p => String(p.id) === String(partId));
-  const isPackUnit = part && (part.unit_type === "box" || part.unit_type === "pack");
-  const usesAutoPackFlow = Boolean(isPackUnit && (type === "OUT" || type === "BORROW" || type === "RETURN"));
+  const isPackUnit = part && isPackUnitType(part.unit_type);
 
   if (!partId) {
+    setExistingSerialLookup([]);
     setSectionVisible(serialGroup, false);
     setSectionVisible(inSerialGroup, false);
     return;
@@ -180,13 +330,30 @@ async function fetchSerials(partId) {
 
   // Handle Stock IN separate logic
   if (type === "IN") {
-    setSectionVisible(serialGroup, false);
-    if (inSerialGroup) {
-      setSectionVisible(inSerialGroup, true, "block");
-      qtyInput.readOnly = true;
-      updateInSerialsCount();
+    try {
+      const token = localStorage.getItem("token");
+      const serials = await fetchData(`/spareparts/${partId}/serials`, token);
+      const serialRows = Array.isArray(serials) ? serials : [];
+      setExistingSerialLookup(serialRows);
+
+      setSectionVisible(serialGroup, false);
+      if (inSerialGroup) {
+        setSectionVisible(inSerialGroup, true, "block");
+        qtyInput.readOnly = true;
+        updateInSerialsCount();
+      }
+      return;
+    } catch (err) {
+      console.error("Failed to fetch serials for IN", err);
+      setExistingSerialLookup([]);
+      setSectionVisible(serialGroup, false);
+      if (inSerialGroup) {
+        setSectionVisible(inSerialGroup, true, "block");
+        qtyInput.readOnly = true;
+        updateInSerialsCount();
+      }
+      return;
     }
-    return;
   } else {
     setSectionVisible(inSerialGroup, false);
   }
@@ -194,26 +361,41 @@ async function fetchSerials(partId) {
   try {
     const token = localStorage.getItem("token");
     const serials = await fetchData(`/spareparts/${partId}/serials`, token);
+    setExistingSerialLookup(Array.isArray(serials) ? serials : []);
+
+    if (serialGroup) {
+      const serialLabel = serialGroup.querySelector(".section-label");
+      if (serialLabel) {
+        serialLabel.innerHTML = `Select Individual SP No: (<span id="selected-count">0</span> selected)`;
+      }
+    }
+
     setSectionVisible(serialGroup, true, "block");
     if (serials && serials.length > 0) {
-      if (usesAutoPackFlow) {
-        serialList.innerHTML = serials.map(s => `
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; background: var(--bg-main); padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
-            <span>${s.serial_no}</span>
-            <strong>${Number(s.remaining_qty) || 0}/${Number(s.initial_qty) || 0}</strong>
-          </div>
-        `).join("");
+      serialList.innerHTML = serials.map(s => {
+        const initialQty = Number(s.initial_qty) || 1;
+        const remainingQty = Number(s.remaining_qty) || 0;
+        const qtyBadge = isPackUnit
+          ? `<span style="font-weight: 700; color: var(--primary);">${remainingQty}/${initialQty}</span>`
+          : "";
+
+        return `
+          <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-size: 13px; background: var(--bg-main); padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
+            <span style="display:flex; align-items:center; gap:6px;">
+              <input type="checkbox" name="serial" value="${s.id}" onchange="updateSelectedSerialsCount()">
+              ${s.serial_no}
+            </span>
+            ${qtyBadge}
+          </label>
+        `;
+      }).join("");
+
+      if (isPackUnit) {
         qtyInput.readOnly = false;
         if (!qtyInput.value || Number(qtyInput.value) < 1) qtyInput.value = "";
-        serialWarning.textContent = i18nText("packAutoAllocateHint", "System will consume the current SP no until empty, then continue with the next one.");
+        serialWarning.textContent = "Please select SP no to use, then enter quantity in pieces.";
         setSectionVisible(serialWarning, true, "block");
       } else {
-        serialList.innerHTML = serials.map(s => `
-          <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 13px; background: var(--bg-main); padding: 5px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
-            <input type="checkbox" name="serial" value="${s.id}" onchange="updateSelectedSerialsCount()">
-            ${s.serial_no}
-          </label>
-        `).join("");
         qtyInput.readOnly = true;
         qtyInput.value = 0;
         setSectionVisible(serialWarning, false);
@@ -243,9 +425,29 @@ function updateSelectedSerialsCount() {
 function updateInSerialsCount() {
   const textarea = document.getElementById("in-serials");
   const qtyInput = document.getElementById("quantity");
+  const helper = document.getElementById("in-serials-helper");
   if (textarea && qtyInput && document.getElementById("movement-type").value === "IN") {
-    const count = textarea.value.split("\n").filter(s => s.trim()).length;
+    const lines = textarea.value.split("\n").map(s => s.trim()).filter(Boolean);
+    const count = lines.length;
+    const duplicates = lines.filter((item, index) => lines.indexOf(item) !== index);
+    const existingConflicts = findExistingSerialConflicts(lines);
     qtyInput.value = count;
+
+    if (helper) {
+      if (duplicates.length > 0) {
+        helper.textContent = `SP no duplicated: ${[...new Set(duplicates)].join(", ")}`;
+        helper.style.color = "#ef4444";
+      } else if (existingConflicts.length > 0) {
+        helper.textContent = `SP no already exists: ${[...new Set(existingConflicts)].join(", ")}`;
+        helper.style.color = "#ef4444";
+      } else if (count > 0) {
+        helper.textContent = `SP no entered: ${count} item(s). Ready to submit.`;
+        helper.style.color = "#16a34a";
+      } else {
+        helper.textContent = "Enter one SP no per line.";
+        helper.style.color = "#64748b";
+      }
+    }
   }
 }
 
@@ -256,9 +458,13 @@ document.getElementById("in-serials")?.addEventListener("input", function() {
   
   // Internal duplicate check
   const duplicates = trimmedLines.filter((item, index) => trimmedLines.indexOf(item) !== index);
+  const existingConflicts = findExistingSerialConflicts(trimmedLines);
   if (duplicates.length > 0) {
     this.style.borderColor = "#ef4444";
     this.title = "Duplicate SP no detected: " + [...new Set(duplicates)].join(", ");
+  } else if (existingConflicts.length > 0) {
+    this.style.borderColor = "#ef4444";
+    this.title = "SP no already exists: " + [...new Set(existingConflicts)].join(", ");
   } else {
     this.style.borderColor = "#cbd5e1";
     this.title = "";
@@ -268,11 +474,19 @@ document.getElementById("in-serials")?.addEventListener("input", function() {
 
 document.getElementById("movement-type")?.addEventListener("change", function() {
   const partId = document.getElementById("part-select")?.value;
+  const helper = document.getElementById("in-serials-helper");
+  if (helper && this.value !== "IN") {
+    helper.textContent = "Enter one SP no per line.";
+    helper.style.color = "#64748b";
+  }
   if(partId) fetchSerials(partId);
 });
 
 let allMovements = [];
 let cachedParts = [];
+const MAX_VISIBLE_PART_RESULTS = 6;
+let filteredPartResults = [];
+let activeAutocompleteIndex = -1;
 
 document.getElementById("movement-search")?.addEventListener("input", function() {
     const searchTerm = this.value.toLowerCase();
@@ -295,34 +509,308 @@ async function loadParts() {
     const token = localStorage.getItem("token");
     const data = await fetchData("/spareparts", token);
     cachedParts = Array.isArray(data) ? data : [];
-    renderPartOptions(cachedParts);
+    applyFilters();
   } catch (err) {
     console.error("Failed to load parts", err);
   }
 }
 
-function renderPartOptions(parts) {
+function getPartSearchScore(part, normalizedSearchTerm) {
+  const tokens = tokenizeSearchTerm(normalizedSearchTerm);
+  const name = String(part?.name || "").toLowerCase();
+  const partNo = String(part?.partType || part?.part_no || "").toLowerCase();
+  const warehouse = String(part?.warehouse_name || "").toLowerCase();
+  const description = String(part?.description || "").toLowerCase();
+
+  if (tokens.length === 0) return 100;
+
+  let score = 0;
+  let matchedNameOrPart = false;
+  let matchedWarehouse = false;
+
+  tokens.forEach((token) => {
+    if (partNo.startsWith(token)) {
+      score += 0;
+      matchedNameOrPart = true;
+      return;
+    }
+    if (name.startsWith(token)) {
+      score += 1;
+      matchedNameOrPart = true;
+      return;
+    }
+    if (warehouse.startsWith(token)) {
+      score += 2;
+      matchedWarehouse = true;
+      return;
+    }
+    if (partNo.includes(token)) {
+      score += 3;
+      matchedNameOrPart = true;
+      return;
+    }
+    if (name.includes(token)) {
+      score += 4;
+      matchedNameOrPart = true;
+      return;
+    }
+    if (warehouse.includes(token)) {
+      score += 5;
+      matchedWarehouse = true;
+      return;
+    }
+    if (description.includes(token)) {
+      score += 6;
+      return;
+    }
+    score += 20;
+  });
+
+  if (matchedNameOrPart && matchedWarehouse) score -= 3;
+  if (name === normalizedSearchTerm || partNo === normalizedSearchTerm) score -= 2;
+
+  return score;
+}
+
+function getFilteredParts(searchTerm, selectedWarehouse) {
+  const normalizedSearchTerm = String(searchTerm || "").trim().toLowerCase();
+  const tokens = tokenizeSearchTerm(normalizedSearchTerm);
+
+  return cachedParts
+    .filter((part) => {
+      const matchesWarehouse = !selectedWarehouse || part.warehouse_name === selectedWarehouse;
+      if (!matchesWarehouse) return false;
+      if (!normalizedSearchTerm) return true;
+
+      const name = String(part.name || "").toLowerCase();
+      const partNo = String(part.partType || part.part_no || "").toLowerCase();
+      const warehouse = String(part.warehouse_name || "").toLowerCase();
+      const description = String(part.description || "").toLowerCase();
+      return tokens.every((token) =>
+        name.includes(token) ||
+        partNo.includes(token) ||
+        warehouse.includes(token) ||
+        description.includes(token)
+      );
+    })
+    .sort((left, right) => {
+      const byScore = getPartSearchScore(left, normalizedSearchTerm) - getPartSearchScore(right, normalizedSearchTerm);
+      if (byScore !== 0) return byScore;
+
+      const leftPartNo = String(left.partType || left.part_no || "");
+      const rightPartNo = String(right.partType || right.part_no || "");
+      return leftPartNo.localeCompare(rightPartNo) || String(left.name || "").localeCompare(String(right.name || ""));
+    });
+}
+
+function getSimilarPartWarning(parts, searchTerm) {
+  if (!String(searchTerm || "").trim() || parts.length < 2) return "";
+
+  const groups = new Map();
+  parts.forEach((part) => {
+    const key = String(part.name || "").trim().toLowerCase();
+    if (!key) return;
+    const current = groups.get(key) || [];
+    current.push(part);
+    groups.set(key, current);
+  });
+
+  const duplicateGroup = [...groups.values()].find((group) => {
+    if (group.length < 2) return false;
+    const warehouses = new Set(group.map((part) => String(part.warehouse_name || "-").trim()));
+    return warehouses.size > 1;
+  });
+
+  if (!duplicateGroup) return "";
+
+  const partName = duplicateGroup[0]?.name || "Selected part";
+  const warehouseList = [...new Set(duplicateGroup.map((part) => String(part.warehouse_name || "-").trim()))]
+    .filter(Boolean)
+    .join(", ");
+
+  return `${partName} appears in multiple warehouses (${warehouseList}). Check Part Ref and Warehouse before selecting.`;
+}
+
+function formatPartOptionLabel(part) {
+  return `${part.name} - ${part.partType || part.part_no}${part.description ? ' - ' + part.description : ''} (In stock: ${part.quantity})`;
+}
+
+function setAutocompleteActiveIndex(nextIndex) {
+  const resultButtons = Array.from(document.querySelectorAll("#part-autocomplete-results .part-result-option"));
+  if (resultButtons.length === 0) {
+    activeAutocompleteIndex = -1;
+    return;
+  }
+
+  const normalizedIndex = Math.max(0, Math.min(nextIndex, resultButtons.length - 1));
+  activeAutocompleteIndex = normalizedIndex;
+  resultButtons.forEach((button, index) => {
+    button.classList.toggle("is-active", index === normalizedIndex);
+  });
+}
+
+function closePartAutocomplete() {
+  const resultsContainer = document.getElementById("part-autocomplete-results");
+  if (!resultsContainer) return;
+  resultsContainer.hidden = true;
+  activeAutocompleteIndex = -1;
+}
+
+function resetPartSelectionState() {
+  const partSearchInput = document.getElementById("part-search-input");
+  const partSelect = document.getElementById("part-select");
+  const sparepartNoInput = document.getElementById("sparepart-no");
+  const reasonSelect = document.getElementById("reason-select");
+
+  if (partSearchInput) partSearchInput.value = "";
+  if (partSelect) {
+    partSelect.value = "";
+    partSelect.dataset.selectionSource = "";
+    partSelect.dataset.manualSelection = "false";
+  }
+  if (sparepartNoInput) sparepartNoInput.value = "";
+  if (reasonSelect) reasonSelect.dataset.manualSelection = "false";
+
+  renderSelectedPartSummary(null);
+  renderPartSelectionWarning("");
+  setExistingSerialLookup([]);
+  closePartAutocomplete();
+}
+
+function selectPart(part, options = {}) {
+  const { updateSearchInput = true, preserveDropdown = false } = options;
+  const select = document.getElementById("part-select");
+  const searchInput = document.getElementById("part-search-input");
+  if (!select) return;
+
+  if (!part) {
+    select.value = "";
+    if (updateSearchInput && searchInput) searchInput.value = "";
+    select.dispatchEvent(new Event("change"));
+    if (!preserveDropdown) closePartAutocomplete();
+    return;
+  }
+
+  select.dataset.selectionSource = "autocomplete";
+  select.value = String(part.id);
+  select.dataset.manualSelection = "true";
+  if (updateSearchInput && searchInput) searchInput.value = formatSelectedPartSearchValue(part);
+  select.dispatchEvent(new Event("change"));
+  if (!preserveDropdown) closePartAutocomplete();
+}
+
+function renderAutocompleteResults(parts, options = {}) {
+  const { searchTerm = "" } = options;
+  const resultsContainer = document.getElementById("part-autocomplete-results");
+  if (!resultsContainer) return;
+
+  const normalizedSearchTerm = String(searchTerm || "").trim();
+  resultsContainer.innerHTML = "";
+
+  if (!normalizedSearchTerm) {
+    resultsContainer.hidden = true;
+    activeAutocompleteIndex = -1;
+    return;
+  }
+
+  if (parts.length === 0) {
+    const emptyState = document.createElement("div");
+    emptyState.className = "part-result-empty";
+    emptyState.textContent = i18nText("noResultsFound", "No matching part found");
+    resultsContainer.appendChild(emptyState);
+    resultsContainer.hidden = false;
+    activeAutocompleteIndex = -1;
+    return;
+  }
+
+  parts.slice(0, MAX_VISIBLE_PART_RESULTS).forEach((part, index) => {
+    const stockState = getStockState(part.quantity);
+    const pieceStockState = getStockState(part.piece_stock ?? part.quantity);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "part-result-option";
+    button.dataset.partId = String(part.id);
+    button.innerHTML = `
+      <span class="part-result-title-row">
+        <span class="part-result-title">${highlightMatches(part.name || "-", searchTerm)}</span>
+        <span class="part-result-code">${highlightMatches(part.partType || part.part_no || "-", searchTerm)}</span>
+      </span>
+      <span class="part-result-chip-row">
+        <span class="part-result-chip part-result-chip-warehouse">Warehouse: ${highlightMatches(part.warehouse_name || "-", searchTerm)}</span>
+        <span class="part-result-chip part-result-chip-unit">Unit: ${escapeHtml(normalizeUnitType(part.unit_type))}</span>
+        <span class="part-result-chip part-result-chip-stock part-result-chip-stock-${stockState}">Stock: ${escapeHtml(part.quantity ?? 0)}</span>
+        <span class="part-result-chip part-result-chip-piece part-result-chip-piece-${pieceStockState}">Piece: ${escapeHtml(part.piece_stock ?? part.quantity ?? 0)}</span>
+      </span>
+      <span class="part-result-description">${highlightMatches(part.description || "No description", searchTerm)}</span>
+    `;
+    button.addEventListener("click", () => {
+      selectPart(part);
+    });
+    resultsContainer.appendChild(button);
+    if (index === 0) button.classList.add("is-active");
+  });
+
+  resultsContainer.hidden = false;
+  activeAutocompleteIndex = 0;
+}
+
+function renderPartOptions(parts, options = {}) {
+  const { searchTerm = "" } = options;
   const select = document.getElementById("part-select");
   if (!select) return;
+  const normalizedSearchTerm = String(searchTerm || "").trim();
+
   select.innerHTML = "";
+  select.dataset.manualSelection = "false";
+  filteredPartResults = parts.slice(0, MAX_VISIBLE_PART_RESULTS);
+  renderPartSelectionWarning(getSimilarPartWarning(parts, normalizedSearchTerm));
+
+  if (!normalizedSearchTerm) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = i18nText("selectPart", "Select part");
+    placeholder.selected = true;
+    select.appendChild(placeholder);
+  }
+
   if (parts.length > 0) {
     parts.forEach(part => {
       const option = document.createElement("option");
       option.value = part.id;
-      option.textContent = `${part.name} - ${part.partType || part.part_no}${part.description ? ' - ' + part.description : ''} (In stock: ${part.quantity})`;
+      option.textContent = formatPartOptionLabel(part);
       select.appendChild(option);
     });
-    // Trigger change to update Spare Part No field
-    select.dispatchEvent(new Event("change"));
+    renderAutocompleteResults(parts, { searchTerm: normalizedSearchTerm });
   } else {
+    const emptyOption = document.createElement("option");
+    emptyOption.value = "";
+    emptyOption.textContent = i18nText("noResultsFound", "No matching part found");
+    emptyOption.disabled = true;
+    emptyOption.selected = true;
+    select.appendChild(emptyOption);
+
     const sparepartNoInput = document.getElementById("sparepart-no");
     if (sparepartNoInput) sparepartNoInput.value = "";
+    updatePieceStockInfo(null);
+    renderSelectedPartSummary(null);
+    renderPartSelectionWarning("");
+    syncWarehouseByPart(null);
+    fetchSerials("");
+    renderAutocompleteResults([], { searchTerm: normalizedSearchTerm });
   }
 }
 
 function syncWarehouseByPart(part) {
   const warehouseSelect = document.getElementById("reason-select");
   if (!warehouseSelect) return;
+  const partSelect = document.getElementById("part-select");
+  if (partSelect?.dataset.manualSelection !== "true") {
+    warehouseSelect.value = "";
+    warehouseSelect.disabled = false;
+    warehouseSelect.title = "";
+    return;
+  }
+  if (warehouseSelect.dataset.manualSelection === "true") return;
   if (!part || !part.warehouse_name) {
     warehouseSelect.value = "";
     warehouseSelect.disabled = false;
@@ -342,22 +830,60 @@ function syncWarehouseByPart(part) {
 }
 
 function applyFilters() {
-  const searchTerm = document.getElementById("part-search-input")?.value.toLowerCase() || "";
+  const searchTerm = document.getElementById("part-search-input")?.value || "";
   const selectedWarehouse = document.getElementById("reason-select")?.value || "";
 
-  const filtered = cachedParts.filter(p => {
-    const matchesSearch = (p.name || "").toLowerCase().includes(searchTerm) || 
-                          (p.partType || p.part_no || "").toLowerCase().includes(searchTerm);
-    const matchesWarehouse = !selectedWarehouse || (p.warehouse_name === selectedWarehouse);
-    return matchesSearch && matchesWarehouse;
-  });
-
-  renderPartOptions(filtered);
+  const filtered = getFilteredParts(searchTerm, selectedWarehouse);
+  renderPartOptions(filtered, { searchTerm });
 }
 
 document.getElementById("part-search-input")?.addEventListener("input", applyFilters);
 
-document.getElementById("reason-select")?.addEventListener("change", applyFilters);
+document.getElementById("part-search-input")?.addEventListener("focus", function() {
+  if (String(this.value || "").trim()) {
+    applyFilters();
+  }
+});
+
+document.getElementById("part-search-input")?.addEventListener("keydown", function(event) {
+  if (filteredPartResults.length === 0) return;
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    setAutocompleteActiveIndex(activeAutocompleteIndex + 1);
+    return;
+  }
+
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    setAutocompleteActiveIndex(activeAutocompleteIndex - 1);
+    return;
+  }
+
+  if (event.key === "Enter") {
+    if (activeAutocompleteIndex >= 0 && filteredPartResults[activeAutocompleteIndex]) {
+      event.preventDefault();
+      selectPart(filteredPartResults[activeAutocompleteIndex]);
+    }
+    return;
+  }
+
+  if (event.key === "Escape") {
+    closePartAutocomplete();
+  }
+});
+
+document.addEventListener("click", function(event) {
+  const searchRow = document.querySelector(".search-select-row");
+  if (!searchRow?.contains(event.target)) {
+    closePartAutocomplete();
+  }
+});
+
+document.getElementById("reason-select")?.addEventListener("change", function() {
+  this.dataset.manualSelection = "true";
+  applyFilters();
+});
 
 async function loadReasons() {
   try {
@@ -485,7 +1011,48 @@ document.getElementById("movement-form").addEventListener("submit", async functi
 
     const selectedSerials = Array.from(document.querySelectorAll('input[name="serial"]:checked')).map(cb => parseInt(cb.value));
     const newSerialsRaw = document.getElementById("in-serials")?.value || "";
-    const newSerials = movement_type === "IN" ? newSerialsRaw.split("\n").filter(s => s.trim()).map(s => s.trim()) : [];
+    const newSerials = movement_type === "IN" ? newSerialsRaw.split("\n").map(s => s.trim()).filter(Boolean) : [];
+    const requestedQty = movement_type === "IN" ? newSerials.length : quantity;
+    const selectedPart = cachedParts.find(p => Number(p.id) === Number(part_id));
+    const selectedPartIsPack = isPackUnitType(selectedPart?.unit_type);
+
+    if (movement_type === "IN" && requestedQty !== quantity) {
+      showToast(`SP no count (${requestedQty}) must equal quantity (${quantity})`, "warning");
+      return;
+    }
+
+    if (movement_type === "IN" && requestedQty === 0) {
+      showToast("Please enter at least one SP no for Stock IN", "warning");
+      return;
+    }
+
+    if (movement_type === "IN") {
+      const existingConflicts = findExistingSerialConflicts(newSerials);
+      if (existingConflicts.length > 0) {
+        showToast("SP no already exists: " + [...new Set(existingConflicts)].join(", "), "error");
+        const inSerialsEl = document.getElementById("in-serials");
+        if (inSerialsEl) {
+          inSerialsEl.style.borderColor = "#ef4444";
+          inSerialsEl.focus();
+        }
+        return;
+      }
+    }
+
+    if (["OUT", "BORROW", "RETURN", "TRANSFER"].includes(movement_type) && selectedSerials.length === 0) {
+      showToast("Please select at least one SP no before submit", "warning");
+      return;
+    }
+
+    if (["OUT", "BORROW", "RETURN", "TRANSFER"].includes(movement_type) && !selectedPartIsPack && selectedSerials.length !== requestedQty) {
+      showToast(`Selected SP no (${selectedSerials.length}) must match quantity (${requestedQty})`, "warning");
+      return;
+    }
+
+    if (movement_type === "TRANSFER" && selectedPartIsPack && selectedSerials.length !== quantity) {
+      showToast(`Selected SP no (${selectedSerials.length}) must match transfer quantity (${quantity})`, "warning");
+      return;
+    }
 
     // Strict duplicate check before submission for IN
     if (movement_type === "IN" && newSerials.length > 0) {
@@ -506,7 +1073,7 @@ document.getElementById("movement-form").addEventListener("submit", async functi
     let payload = {
         part_id, 
         movement_type, 
-        quantity, 
+        quantity: requestedQty, 
         department, 
         receiver, 
         receipt_number, 
@@ -522,6 +1089,7 @@ document.getElementById("movement-form").addEventListener("submit", async functi
         part_id,
         target_warehouse_id: parseInt(document.getElementById("target-warehouse-select").value),
         quantity,
+        serial_ids: selectedSerials,
         note: note || `Transfer by ${localStorage.getItem("username") || "user"}`
       };
     }
@@ -530,11 +1098,19 @@ document.getElementById("movement-form").addEventListener("submit", async functi
 
     showToast(movement_type === "TRANSFER" ? "Transfer successful!" : "Stock movement recorded successfully!", "success");
     document.getElementById("movement-form").reset();
+    resetPartSelectionState();
     setSectionVisible(document.getElementById("serial-selection-group"), false);
     setSectionVisible(document.getElementById("in-serials-group"), false);
     setSectionVisible(document.getElementById("target-warehouse-group"), false);
-    await loadParts();
-    await loadMovements();
+
+    // Save already completed at this point. Refresh errors should not be reported as save failure.
+    try {
+      await loadParts();
+      await loadMovements();
+    } catch (refreshErr) {
+      console.error("Refresh after submit failed:", refreshErr);
+      showToast("Saved successfully, but failed to refresh latest data. Please reload page.", "warning");
+    }
   } catch (err) {
     console.error("Submission failed ERROR:", err);
     if (err.status === 409) {

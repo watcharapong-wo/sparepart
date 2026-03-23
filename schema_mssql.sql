@@ -20,7 +20,7 @@ BEGIN
         name NVARCHAR(255) NOT NULL,
         description NVARCHAR(MAX),
         quantity INT NOT NULL,
-        unit_type NVARCHAR(20) NOT NULL CONSTRAINT DF_spare_parts_unit_type DEFAULT 'piece',
+        unit_type NVARCHAR(20) NOT NULL CONSTRAINT DF_spare_parts_unit_type DEFAULT 'PC',
         conversion_rate DECIMAL(18,4) NOT NULL CONSTRAINT DF_spare_parts_conversion_rate DEFAULT 1,
         piece_stock INT NOT NULL CONSTRAINT DF_spare_parts_piece_stock DEFAULT 0,
         price DECIMAL(18,2),

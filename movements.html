@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stock Movements - it Spare part System</title>
+  <title>Stock Movements - IT Spare Part System</title>
   <link rel="icon" type="image/png" href="public/assets/images/logo.png">
-  <link rel="stylesheet" href="styles.css?v=1.3">
+  <link rel="stylesheet" href="styles.css?v=1.8">
 </head>
 <body>
   <nav class="navbar">
-    <div class="nav-brand">it Spare part System <span>- Stock Movements</span></div>
+    <div class="nav-brand">IT Spare Part System <span>- Stock Movements</span></div>
     <div class="nav-links">
       <a href="dashboard.html" data-i18n="dashboard">Dashboard</a>
       <a href="movements.html" class="active" data-i18n="movements" onclick="if(window.location.pathname.endsWith('movements.html')){event.preventDefault();initMovementsPage();}">Movements</a>
@@ -39,7 +39,7 @@
         <div class="card-title" data-i18n="recordMovement">Record Stock Movement</div>
         <form id="movement-form" class="form-grid-premium-v2">
           <!-- Row 1 -->
-          <div class="stacked-form-group">
+          <div class="stacked-form-group movement-type-field">
             <label data-i18n="movementType" for="movement-type">Movement Type</label>
             <select id="movement-type" required title="Select movement type">
               <option value="IN" data-i18n="stockIn" data-role-required="admin,co-admin">IN</option>
@@ -50,11 +50,14 @@
             </select>
           </div>
           
-          <div class="stacked-form-group double-span">
+          <div class="stacked-form-group double-span part-search-field">
             <label data-i18n="part" for="part-select">Search & Select Part</label>
             <div class="search-select-row">
-              <input type="text" id="part-search-input" data-i18n-placeholder="searchPart" class="premium-search-input" placeholder="Search part" title="Search part">
-              <select id="part-select" required title="Select part"></select>
+              <input type="text" id="part-search-input" data-i18n-placeholder="searchPart" class="premium-search-input" placeholder="Search part" title="Search part" autocomplete="off">
+              <div id="part-autocomplete-results" class="part-autocomplete-results" hidden></div>
+              <div id="part-selection-warning" class="part-selection-warning" hidden></div>
+              <div id="part-selection-summary" class="part-selection-summary" hidden></div>
+              <select id="part-select" class="part-select-native" required title="Select part"></select>
             </div>
           </div>
 
@@ -67,15 +70,17 @@
           <div class="stacked-form-group">
             <label id="quantity-label" data-i18n="qty" for="quantity">Quantity</label>
             <input type="number" id="quantity" required min="1" placeholder="Enter quantity" title="Quantity">
-            <div id="piece-stock-info" hidden style="font-size:0.83em; color:var(--success-color, #22c55e); margin-top:4px; font-weight:500;"></div>
+            <div id="piece-stock-info" hidden class="piece-stock-info"></div>
           </div>
 
           <div class="stacked-form-group">
             <label data-i18n="unitType" for="unit-type">Unit Type</label>
             <select id="unit-type" required title="Select unit type">
-              <option value="box" data-i18n="box">Box</option>
-              <option value="piece" data-i18n="piece">Piece</option>
-              <option value="pack" data-i18n="pack">Pack</option>
+              <option value="M" data-i18n="m">M</option>
+              <option value="PC" data-i18n="pc">PC</option>
+              <option value="PAC" data-i18n="pac">PAC</option>
+              <option value="BOX" data-i18n="box">BOX</option>
+              <option value="ROL" data-i18n="rol">ROL</option>
             </select>
           </div>
 
@@ -105,6 +110,9 @@
           <div id="in-serials-group" class="serial-area-v2 full-span" hidden>
             <label data-i18n="serialNumbers" class="section-label" for="in-serials">Register New SP No List (One per line):</label>
             <textarea id="in-serials" rows="3" placeholder="SN001\nSN002" title="Enter serial numbers"></textarea>
+            <div id="in-serials-helper" class="in-serials-helper">
+              Enter one SP no per line.
+            </div>
           </div>
 
           <!-- Row 3: Tracking -->
@@ -120,7 +128,7 @@
 
           <div class="stacked-form-group" id="conversion-rate-group" hidden>
             <label data-i18n="conversionRate" for="conversion-rate">Conversion Rate</label>
-            <input type="number" id="conversion-rate" min="1" value="1" required data-i18n="conversionRatePlaceholder" placeholder="Conversion rate (e.g. 1 box = 10 pieces)" title="Conversion rate">
+            <input type="number" id="conversion-rate" min="1" value="1" required data-i18n="conversionRatePlaceholder" placeholder="Conversion rate (e.g. 1 BOX = 10 PC)" title="Conversion rate">
           </div>
 
           <!-- Note Span -->
@@ -175,6 +183,6 @@
 
   <script src="i18n.js?v=1.4"></script>
   <script src="api.js?v=1.3"></script>
-  <script src="movements.js?v=1.10"></script>
+  <script src="movements.js?v=1.15"></script>
 </body>
 </html>

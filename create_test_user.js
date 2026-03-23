@@ -1,25 +1,28 @@
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcryptjs');
-const db = new sqlite3.Database('./sparepart.db');
+const dbConfig = require('./db/config');
 
-bcrypt.hash('test123', 10, (err, hash) => {
+const username = process.env.SMOKE_USERNAME || 'testuser';
+const password = process.env.SMOKE_PASSWORD || 'test123';
+const sqliteFilePath = dbConfig.sqlite?.filePath || './sparepart.db';
+const db = new sqlite3.Database(sqliteFilePath);
+
+bcrypt.hash(password, 10, (err, hash) => {
   if (err) {
     console.error('Hash error:', err);
     db.close();
     process.exit(1);
   }
 
-  // Delete existing testuser
-  db.run("DELETE FROM users WHERE username = 'testuser'", () => {
-    // Insert new testuser
+  db.run("DELETE FROM users WHERE username = ?", [username], () => {
     db.run(
       "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-      ['testuser', hash, 'admin'],
+      [username, hash, 'admin'],
       (err) => {
         if (err) {
           console.error('Insert error:', err.message);
         } else {
-          console.log('User testuser created with password test123');
+          console.log(`User ${username} created with password ${password}`);
         }
         db.close();
       }

@@ -58,8 +58,20 @@ async function postData(endpoint, data, token) {
       body: JSON.stringify(data)
     });
     const result = await response.json().catch(() => ({}));
+    const requestId = response.headers.get("x-request-id") || result.requestId;
     handleAuthFailure(response.status);
-    if (!response.ok) throw new Error(result.error || `POST failed: ${response.status}`);
+    if (!response.ok) {
+      const err = new Error(result.error || `POST failed: ${response.status}`);
+      err.status = response.status;
+      err.requestId = requestId || null;
+      if (requestId) {
+        err.message = `${err.message} (ref: ${requestId})`;
+      }
+      throw err;
+    }
+    if (requestId && typeof result === "object" && result !== null && !result.requestId) {
+      result.requestId = requestId;
+    }
     return result;
   } catch (err) {
     console.error(`postData error [${endpoint}]:`, err);

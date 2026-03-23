@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - it Spare part System</title>
+  <title>Login - IT Spare Part System</title>
   <link rel="icon" type="image/png" href="public/assets/images/logo.png">
   <link rel="stylesheet" href="styles.css?v=1.1">
 </head>
@@ -14,16 +14,18 @@
       <div class="logo-wrapper">
         <span class="logo-text">HANA</span>
       </div>
-      <h1 data-i18n="loginSystem">it Spare part System</h1>
+      <h1 data-i18n="loginSystem">IT Spare Part System</h1>
       <form id="login-form">
-        <input type="text" id="username" placeholder="Username" data-i18n="username" required>
-        <input type="password" id="password" placeholder="Password" data-i18n="password" required>
+        <label class="sr-only" for="username">Username</label>
+        <input type="text" id="username" placeholder="Username" data-i18n="username" title="Username" required>
+        <label class="sr-only" for="password">Password</label>
+        <input type="password" id="password" placeholder="Password" data-i18n="password" title="Password" required>
         <button type="submit" data-i18n="login">Login</button>
       </form>
     </div>
   </div>
 
-  <footer class="footer" style="position: fixed; bottom: 0; left: 0; right: 0;">
+  <footer class="footer footer-fixed-bottom">
     Hana Microelectronics Public Co., Ltd. | Dev by <span>Watcharapong W.</span> IT Eng.
   </footer>
 

@@ -55,20 +55,36 @@ async function loadDashboard() {
       ? "/report/value-by-warehouse"
       : `/report/top-parts-by-warehouse${filterQuery}`;
     
-    // Parallel Fetching
-    const [stockValueResp, lowStock, movements, warehouseValue, trends, monthlyData, expensesByWarehouse, accountData] = await Promise.all([
+    // Keep dashboard usable even when one report endpoint fails.
+    const settled = await Promise.allSettled([
       fetchData(`/report/value${filterQuery}`, token),
       fetchData(`/report/low-stock${filterQuery}`, token),
       fetchData(`/report/movements3${filterQuery}`, token),
-      fetchData(warehouseDataEndpoint, token), // Conditional endpoint
+      fetchData(warehouseDataEndpoint, token),
       fetchData(`/report/movement-trends${filterQuery}`, token),
       fetchData(`/report/monthly-comparison${filterQuery}`, token),
       fetchData(`/report/expense-by-warehouse${filterQuery}`, token),
       fetchData(`/report/withdraw-by-account${filterQuery}`, token)
     ]);
 
+    const pick = (index, fallback, label) => {
+      const item = settled[index];
+      if (item.status === "fulfilled") return item.value;
+      console.error(`Dashboard partial failure [${label}]:`, item.reason);
+      return fallback;
+    };
+
+    const stockValueResp = pick(0, [], "value");
+    const lowStock = pick(1, [], "low-stock");
+    const movements = pick(2, [], "movements3");
+    const warehouseValue = pick(3, [], "warehouse-data");
+    const trends = pick(4, [], "movement-trends");
+    const monthlyData = pick(5, [], "monthly-comparison");
+    const expensesByWarehouse = pick(6, [], "expense-by-warehouse");
+    const accountData = pick(7, [], "withdraw-by-account");
+
     // Update Stats
-    const totalValue = (stockValueResp?.[0]?.stock_value) || 0;
+    const totalValue = Number(stockValueResp?.[0]?.stock_value || 0);
     document.getElementById("stock-value").innerText = totalValue.toLocaleString();
     document.getElementById("low-stock").innerText = lowStock?.length || 0;
     
@@ -86,7 +102,7 @@ async function loadDashboard() {
             <td>${escapeHtml(m.part_name || '-')}</td>
             <td>${escapeHtml(m.partType || m.part_no || '-')}</td>
             <td>${escapeHtml(m.note || m.department || m.receiver || '-')}</td>
-            <td><span class="badge" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; font-size: 11px; padding: 2px 6px; border-radius: 4px;">${escapeHtml(m.username || '-')}</span></td>
+            <td><span class="badge badge-user">${escapeHtml(m.username || '-')}</span></td>
           </tr>
         `).join('');
       }
@@ -263,7 +279,8 @@ loadOverdueAlerts();
 async function loadOverdueAlerts() {
   try {
     const token = localStorage.getItem("token");
-    const data = await fetchData("/report/overdue", token);
+    const warehouseId = document.getElementById("warehouse-filter")?.value || 'all';
+    const data = await fetchData(`/report/overdue?warehouseId=${warehouseId}`, token);
     const container = document.getElementById("overdue-alerts-container");
     if (!container) return;
 
@@ -343,27 +360,52 @@ async function loadInsights(warehouseId) {
     // Render Popular Parts
     const popularTable = document.querySelector("#popular-parts-table tbody");
     if (popularTable) {
-      popularTable.innerHTML = data.popular.map((p, i) => `
+      popularTable.innerHTML = (data.popular || []).map((p, i) => `
         <tr>
           <td>${i + 1}</td>
           <td>${p.partType || p.part_no} - ${p.name}</td>
           <td class="text-success">${p.total_consumed}</td>
         </tr>
       `).join("");
-      if (data.popular.length === 0) popularTable.innerHTML = '<tr><td colspan="3" class="text-center">No data</td></tr>';
+      if (!data.popular || data.popular.length === 0) popularTable.innerHTML = '<tr><td colspan="3" class="text-center">No data</td></tr>';
+    }
+
+    const lowStockTable = document.querySelector("#low-stock-table tbody");
+    if (lowStockTable) {
+      lowStockTable.innerHTML = (data.lowStock || []).map((p) => `
+        <tr>
+          <td>${escapeHtml(p.partType || p.part_no || '-')} - ${escapeHtml(p.name || '-')}</td>
+          <td class="text-warning">${escapeHtml(p.quantity)}</td>
+          <td>${escapeHtml(p.warehouse_name || '-')}</td>
+        </tr>
+      `).join("");
+      if (!data.lowStock || data.lowStock.length === 0) lowStockTable.innerHTML = '<tr><td colspan="3" class="text-center">No low stock risk</td></tr>';
+    }
+
+    const overdueTable = document.querySelector("#overdue-insights-table tbody");
+    if (overdueTable) {
+      overdueTable.innerHTML = (data.overdue || []).map((item) => `
+        <tr>
+          <td>${escapeHtml(item.receiver || '-')}</td>
+          <td>${escapeHtml(item.partType || item.part_no || item.part_name || '-')}</td>
+          <td class="text-danger">${escapeHtml(item.days_overdue ?? '-')}</td>
+        </tr>
+      `).join("");
+      if (!data.overdue || data.overdue.length === 0) overdueTable.innerHTML = '<tr><td colspan="3" class="text-center">No overdue items</td></tr>';
     }
 
     // Render Dead Stock
     const deadTable = document.querySelector("#dead-stock-table tbody");
     if (deadTable) {
-      deadTable.innerHTML = data.deadStock.map(p => `
+      deadTable.innerHTML = (data.deadStock || []).map(p => `
         <tr>
           <td>${p.partType || p.part_no}</td>
           <td>${p.name}</td>
+          <td>${Number(p.stock_value || 0).toLocaleString()}</td>
           <td class="text-danger">${p.last_movement ? new Date(p.last_movement).toLocaleDateString() : 'Never'}</td>
         </tr>
       `).join("");
-      if (data.deadStock.length === 0) deadTable.innerHTML = '<tr><td colspan="3" class="text-center">No dead stock</td></tr>';
+      if (!data.deadStock || data.deadStock.length === 0) deadTable.innerHTML = '<tr><td colspan="4" class="text-center">No dead stock</td></tr>';
     }
   }
 }

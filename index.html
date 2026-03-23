@@ -4,14 +4,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>it Spare part System</title>
+  <title>IT Spare Part System</title>
   <link rel="icon" type="image/png" href="public/assets/images/logo.png">
   <link rel="stylesheet" href="styles.css?v=1.3">
 </head>
 
 <body>
   <nav class="navbar">
-    <div class="nav-brand">it Spare part System <span>- Spare Parts</span></div>
+    <div class="nav-brand">IT Spare Part System <span>- Spare Parts</span></div>
     <div class="nav-links">
       <a href="dashboard.html" data-i18n="dashboard">Dashboard</a>
       <a href="movements.html" data-i18n="movements">Movements</a>
@@ -24,68 +24,69 @@
   </nav>
 
   <div class="dashboard-container">
-    <div class="actions-header"
-      style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <h2 data-i18n="sparePartManagement" style="margin: 0; font-size: 18px; color: var(--text-main);">Spare Part
+    <div class="actions-header">
+      <h2 class="section-heading" data-i18n="sparePartManagement">Spare Part
         Management</h2>
-      <div class="actions-group" style="display: flex; gap: 12px; align-items: center;">
+      <div class="actions-group">
         <div class="search-container">
-          <span style="color: var(--text-muted); margin-right: 8px;">🔍</span>
-          <input type="text" id="part-search" data-i18n="searchParts" placeholder="Search by Part No or Name...">
+          <label class="sr-only" for="part-search">Search spare parts</label>
+          <input type="text" id="part-search" data-i18n="searchParts" placeholder="Search by Part No or Name..." title="Search spare parts">
         </div>
-        <input type="file" id="import-csv-file" accept=".csv" style="display: none;">
-        <button id="import-parts" class="btn btn-primary" style="background-color: var(--warning); border-color: var(--warning); color: #000;" data-i18n="importCSV">📥 Import CSV</button>
+        <input type="file" id="import-csv-file" accept=".csv" hidden>
+        <button id="import-parts" class="btn btn-warning btn-dark-text" data-i18n="importCSV">📥 Import CSV</button>
         <button id="export-parts" class="btn btn-success" data-i18n="exportCSV">Export CSV</button>
         <button onclick="loadSpareParts()" class="btn btn-primary" data-i18n="reloadParts">↻ Reload Parts</button>
       </div>
     </div>
 
-    <div class="card" data-role-required="admin,co-admin" style="margin-bottom: 24px;">
+    <div class="card card-spaced" data-role-required="admin,co-admin">
       <div class="card-title" data-i18n="addSparePart">Add Spare Part</div>
       <form id="add-part-form" class="form-grid">
         <div class="stacked-form-group">
-          <label data-i18n="name">Name Device</label>
-          <input type="text" id="add-name" required>
+          <label for="add-name" data-i18n="name">Name Device</label>
+          <input type="text" id="add-name" required title="Part name" placeholder="Enter part name">
         </div>
         <div class="stacked-form-group">
-          <label data-i18n="partType">Part Type</label>
-          <input type="text" id="add-part-no" required>
+          <label for="add-part-no" data-i18n="partType">Part Type</label>
+          <input type="text" id="add-part-no" required title="Part type" placeholder="Enter part type or part no">
         </div>
         <div class="stacked-form-group">
-          <label data-i18n="description">Description</label>
-          <input type="text" id="add-description">
+          <label for="add-description" data-i18n="description">Description</label>
+          <input type="text" id="add-description" title="Description" placeholder="Enter description">
         </div>
         <div class="stacked-form-group">
-          <label data-i18n="quantity">Quantity</label>
-          <input type="number" id="add-quantity" required>
+          <label for="add-quantity" data-i18n="quantity">Quantity</label>
+          <input type="number" id="add-quantity" required title="Quantity" placeholder="Enter quantity">
         </div>
         <div class="stacked-form-group">
           <label data-i18n="unitType" for="add-unit-type">Unit Type</label>
           <select id="add-unit-type" required title="Select unit type">
-            <option value="box" data-i18n="box">Box</option>
-            <option value="piece" data-i18n="piece" selected>Piece</option>
-            <option value="pack" data-i18n="pack">Pack</option>
+            <option value="M" data-i18n="m">M</option>
+            <option value="PC" data-i18n="pc" selected>PC</option>
+            <option value="PAC" data-i18n="pac">PAC</option>
+            <option value="BOX" data-i18n="box">BOX</option>
+            <option value="ROL" data-i18n="rol">ROL</option>
           </select>
         </div>
         <div class="stacked-form-group">
           <label data-i18n="conversionRate" for="add-conversion-rate">Conversion Rate</label>
-          <input type="number" id="add-conversion-rate" min="1" step="1" value="1" required data-i18n="conversionRatePlaceholder" placeholder="Conversion rate (e.g. 1 box = 10 pieces)" title="Conversion rate">
+          <input type="number" id="add-conversion-rate" min="1" step="1" value="1" required data-i18n="conversionRatePlaceholder" placeholder="Conversion rate (e.g. 1 BOX = 10 PC)" title="Conversion rate">
         </div>
         <div class="stacked-form-group">
-          <label data-i18n="price">Price</label>
-          <input type="number" step="0.01" id="add-price">
+          <label for="add-price" data-i18n="price">Price</label>
+          <input type="number" step="0.01" id="add-price" title="Price" placeholder="Enter price">
         </div>
         <div class="stacked-form-group">
-          <label data-i18n="warehouseLabel">Warehouse:</label>
-          <select id="add-warehouse-select" required></select>
+          <label for="add-warehouse-select" data-i18n="warehouseLabel">Warehouse:</label>
+          <select id="add-warehouse-select" required title="Select warehouse"></select>
         </div>
-        <div class="stacked-form-group" style="grid-column: 1 / -1; display: block;">
+        <div class="stacked-form-group full-span-field">
           <div id="serials-input-group">
-            <label data-i18n="serialNumbers" style="font-weight: 600;">SP no List (one per line)</label>
-            <textarea id="add-serials" rows="4" style="width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-main);" placeholder="SN001&#10;SN002&#10;SN003" required></textarea>
+            <label class="emphasis-label" for="add-serials" data-i18n="serialNumbers">SP no List (one per line)</label>
+            <textarea id="add-serials" rows="4" class="serials-textarea" placeholder="SN001&#10;SN002&#10;SN003" title="SP no list" required></textarea>
           </div>
         </div>
-        <div class="form-actions" style="grid-column: 1 / -1; margin-top: 8px;">
+        <div class="form-actions form-actions-compact full-span-field">
           <button type="submit" class="btn btn-primary" data-i18n="savePart">Save Part</button>
         </div>
       </form>
@@ -115,13 +116,14 @@
       </div>
     </div>
 
-    <div class="dashboard-grid" style="margin-top: 24px;">
+    <div class="dashboard-grid section-spacing-top">
       <!-- Manage Warehouses Card -->
       <div class="card" data-role-required="admin,co-admin">
         <div class="card-title" data-i18n="manageWarehouses">Manage Warehouses</div>
-        <form id="manage-warehouses-form" style="display: flex; gap: 10px; margin-bottom: 16px;">
-          <input type="text" id="new-warehouse-name" data-i18n-placeholder="newWarehouseName" placeholder="New Warehouse Name" required style="flex-grow: 1;">
-          <button type="submit" class="btn btn-primary" style="width: auto;" data-i18n="add">Add</button>
+        <form id="manage-warehouses-form" class="inline-form">
+          <label class="sr-only" for="new-warehouse-name">New warehouse name</label>
+          <input type="text" id="new-warehouse-name" class="inline-form-grow" data-i18n-placeholder="newWarehouseName" placeholder="New Warehouse Name" title="New warehouse name" required>
+          <button type="submit" class="btn btn-primary btn-auto" data-i18n="add">Add</button>
         </form>
         <div class="table-responsive">
           <table id="warehouses-mgmt-table">

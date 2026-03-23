@@ -4,14 +4,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dashboard - it Spare part System</title>
+  <title>Dashboard - IT Spare Part System</title>
   <link rel="icon" type="image/png" href="public/assets/images/logo.png">
   <link rel="stylesheet" href="styles.css?v=1.3">
 </head>
 
 <body>
   <nav class="navbar">
-    <div class="nav-brand">it Spare part System <span>- Dashboard</span></div>
+    <div class="nav-brand">IT Spare Part System <span>- Dashboard</span></div>
     <div class="nav-links">
       <a href="dashboard.html" class="active" data-i18n="dashboard">Dashboard</a>
       <a href="movements.html" data-i18n="movements">Movements</a>
@@ -23,7 +23,7 @@
     </div>
   </nav>
 
-  <div id="overdue-alerts-container" style="max-width: 1200px; margin: 10px auto; padding: 0 20px;"></div>
+  <div id="overdue-alerts-container" class="alerts-container"></div>
 
   <div class="dashboard-container">
     <div class="welcome-banner">
@@ -31,8 +31,9 @@
         <h1 id="welcome-message">Welcome, User</h1>
         <p id="current-date"></p>
       </div>
-      <div style="display: flex; gap: 10px; align-items: center;">
-        <select id="warehouse-filter" class="form-control" style="width: auto; height: auto; padding: 10px 15px; border-radius: 8px;">
+      <div class="welcome-actions">
+        <label class="sr-only" for="warehouse-filter">Warehouse filter</label>
+        <select id="warehouse-filter" class="form-control warehouse-filter-select" title="Warehouse filter">
           <option value="all" data-i18n="allWarehouses">All Warehouses</option>
         </select>
         <button onclick="exportInventory()" class="btn btn-success" data-i18n="exportInventory">📥 Export Inventory</button>
@@ -42,42 +43,42 @@
 
     <div class="stats">
       <div class="stat-item premium">
-        <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">💰</div>
+        <div class="stat-icon stat-icon-blue">💰</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="totalInventoryValue">Total Inventory Value</div>
           <div class="stat-value currency" id="stock-value">0</div>
         </div>
       </div>
       <div class="stat-item premium">
-        <div class="stat-icon" style="background: rgba(239, 68, 68, 0.1); color: #ef4444;">⚠️</div>
+        <div class="stat-icon stat-icon-red">⚠️</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="lowStockItems">Low Stock Items</div>
           <div class="stat-value danger" id="low-stock">0</div>
         </div>
       </div>
       <div class="stat-item premium">
-        <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">📤</div>
+        <div class="stat-icon stat-icon-green">📤</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="totalStockOuts">Total Stock Outs</div>
           <div class="stat-value success" id="stock-out">0</div>
         </div>
       </div>
       <div class="stat-item premium">
-        <div class="stat-icon" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6;">🕒</div>
+        <div class="stat-icon stat-icon-violet">🕒</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="recentMovements">Recent Movements</div>
           <div class="stat-value" id="recent-movements-count">0</div>
         </div>
       </div>
       <div class="stat-item premium">
-        <div class="stat-icon" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6;">💵</div>
+        <div class="stat-icon stat-icon-blue">💵</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="lpn1TotalValue">Inventory Expense</div>
           <div class="stat-value currency" id="total-expense">0</div>
         </div>
       </div>
       <div class="stat-item premium">
-        <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">📦</div>
+        <div class="stat-icon stat-icon-green">📦</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="lpn1TotalOut">Units Withdrawn</div>
           <div class="stat-value success" id="total-out">0</div>
@@ -89,7 +90,7 @@
       <!-- Movement Trends -->
       <div class="card full-width">
         <div class="card-title" data-i18n="movementTrends">Movement Trends (Last 7 Days)</div>
-        <div style="height: 300px;">
+        <div class="chart-container chart-container-sm">
           <canvas id="trend-chart"></canvas>
         </div>
       </div>
@@ -97,7 +98,7 @@
       <!-- Monthly Comparison -->
       <div class="card full-width">
         <div class="card-title" data-i18n="monthlyStockComparison">Monthly Stock Comparison (IN vs OUT)</div>
-        <div style="height: 350px;">
+        <div class="chart-container chart-container-md">
           <canvas id="monthly-chart"></canvas>
         </div>
       </div>
@@ -105,7 +106,7 @@
       <!-- Warehouse Distribution -->
       <div class="card full-width">
         <div class="card-title" data-i18n="stockValueByWarehouse">Stock Value by Warehouse</div>
-        <div style="height: 350px; display: flex; align-items: center; justify-content: center;">
+        <div class="chart-container chart-container-md chart-centered">
           <canvas id="warehouse-chart"></canvas>
         </div>
       </div>
@@ -113,7 +114,7 @@
       <!-- Withdrawals by Account -->
       <div class="card full-width">
         <div class="card-title" data-i18n="withdrawalsByAccount">Withdrawals by Account</div>
-        <div style="height: 400px; padding: 10px;">
+        <div class="chart-container chart-container-lg chart-padded">
           <canvas id="account-chart"></canvas>
         </div>
       </div>
@@ -141,11 +142,11 @@
       </div>
 
       <!-- Inventory Insights Section -->
-    <div class="card full-width" style="margin-top: 24px;">
+    <div class="card full-width section-spacing-top">
       <div class="card-title" data-i18n="inventoryInsights">Inventory Insights & Analytics</div>
       <div class="dashboard-grid">
         <div class="insight-column">
-          <h4 data-i18n="popularParts" style="font-size: 14px; margin-bottom: 12px; color: var(--primary);">Popular Consumed Parts</h4>
+          <h4 class="insight-title insight-title-primary" data-i18n="popularParts">Popular Consumed Parts</h4>
           <div class="table-responsive">
             <table id="popular-parts-table">
               <thead>
@@ -160,13 +161,44 @@
           </div>
         </div>
         <div class="insight-column">
-          <h4 data-i18n="deadStock" style="font-size: 14px; margin-bottom: 12px; color: var(--danger);">Inactive Stock</h4>
+          <h4 class="insight-title insight-title-warning" data-i18n="lowStockWatch">Low Stock Watch</h4>
+          <div class="table-responsive">
+            <table id="low-stock-table">
+              <thead>
+                <tr>
+                  <th data-i18n="partType">Part Type</th>
+                  <th data-i18n="qty">Qty</th>
+                  <th data-i18n="warehouseLabel">Warehouse</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="insight-column">
+          <h4 class="insight-title insight-title-danger" data-i18n="overdueBorrows">Overdue Borrows</h4>
+          <div class="table-responsive">
+            <table id="overdue-insights-table">
+              <thead>
+                <tr>
+                  <th data-i18n="borrower">Borrower</th>
+                  <th data-i18n="partType">Part Type</th>
+                  <th data-i18n="daysOverdue">Days</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="insight-column">
+          <h4 class="insight-title insight-title-danger" data-i18n="deadStock">Inactive Stock</h4>
           <div class="table-responsive">
             <table id="dead-stock-table">
               <thead>
                 <tr>
                   <th data-i18n="partType">Part Type</th>
                   <th data-i18n="name">Name</th>
+                  <th data-i18n="stockValue">Value</th>
                   <th data-i18n="lastMovement">Last Movement</th>
                 </tr>
               </thead>

@@ -9,8 +9,9 @@
     "backup:mssql": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File ./scripts/backup_mssql.ps1",
     "health:check": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File ./scripts/health_check.ps1",
     "backup:schedule": "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -ExecutionPolicy Bypass -File ./scripts/register_daily_backup_task.ps1",
-    "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node scripts/start_server.js",
+    "test": "npm run test:smoke",
+    "test:smoke": "node create_test_user.js && node smoke_test.js"
   },
   "keywords": [],
   "author": "",
@@ -18,7 +19,9 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
+    "express-rate-limit": "^7.5.0",
     "express": "^5.2.1",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "mssql": "^11.0.1",
     "sqlite3": "^5.1.7"

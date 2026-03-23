@@ -3,34 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Activity Logs - it Spare part System</title>
+    <title>Activity Logs - IT Spare Part System</title>
     <link rel="icon" type="image/png" href="public/assets/images/logo.png">
     <link rel="stylesheet" href="styles.css?v=1.3">
-    <style>
-        .badge {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            color: #fff;
-        }
-        .bg-success { background-color: var(--success); }
-        .bg-primary { background-color: var(--primary); }
-        .bg-danger { background-color: var(--danger); }
-        .bg-secondary { background-color: #6b7280; }
-        .bg-info { background-color: #06b6d4; }
-    </style>
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">it Spare part System <span>- Activity Logs</span></div>
+        <div class="nav-brand">IT Spare Part System <span>- Activity Logs</span></div>
         <div class="nav-links">
             <a href="dashboard.html" data-i18n="dashboard">Dashboard</a>
             <a href="movements.html" data-i18n="movements">Movements</a>
             <a href="index.html" data-role-required="admin,co-admin" data-i18n="spareParts">Spare Parts</a>
             <a href="users.html" data-role-required="admin" data-i18n="manageUsers">Manage Users</a>
             <a href="logs.html" class="active" data-role-required="admin" data-i18n="activityLogs">Activity Logs</a>
-            <span id="user-status" style="color: #fff; margin-left: 10px; font-size: 13px;"></span>
+            <span id="user-status" class="nav-user-status"></span>
             <a href="#" id="logout-btn" data-i18n="logout">Logout</a>
         </div>
     </nav>
@@ -39,23 +25,23 @@
         <div class="card full-width">
             <div class="card-title" data-i18n="systemActivityLogs">System Activity Logs</div>
             
-            <div class="filter-bar" style="display: flex; gap: 15px; margin: 0 0 20px 0; flex-wrap: wrap; align-items: flex-end; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <div class="stacked-form-group" style="flex: 1; min-width: 150px; margin: 0;">
-                    <label style="font-size: 12px; margin-bottom: 5px; color: #64748b;" data-i18n="startDate">Start Date</label>
-                    <input type="date" id="filter-start-date" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+            <div class="filter-bar filter-bar-panel">
+                <div class="stacked-form-group log-filter-field log-filter-field-sm">
+                    <label class="filter-label" for="filter-start-date" data-i18n="startDate">Start Date</label>
+                    <input type="date" id="filter-start-date" class="filter-input" title="Start date">
                 </div>
-                <div class="stacked-form-group" style="flex: 1; min-width: 150px; margin: 0;">
-                    <label style="font-size: 12px; margin-bottom: 5px; color: #64748b;" data-i18n="endDate">End Date</label>
-                    <input type="date" id="filter-end-date" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                <div class="stacked-form-group log-filter-field log-filter-field-sm">
+                    <label class="filter-label" for="filter-end-date" data-i18n="endDate">End Date</label>
+                    <input type="date" id="filter-end-date" class="filter-input" title="End date">
                 </div>
-                <div class="stacked-form-group" style="flex: 2; min-width: 200px; margin: 0;">
-                    <label style="font-size: 12px; margin-bottom: 5px; color: #64748b;" data-i18n="searchPlaceholder">Search</label>
-                    <input type="text" id="filter-search" data-i18n-placeholder="searchPlaceholder" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px;">
+                <div class="stacked-form-group log-filter-field log-filter-field-lg">
+                    <label class="filter-label" for="filter-search" data-i18n="searchPlaceholder">Search</label>
+                    <input type="text" id="filter-search" data-i18n-placeholder="searchPlaceholder" class="filter-input" title="Search logs">
                 </div>
-                <div style="display: flex; gap: 10px;">
-                    <button id="btn-filter" class="btn btn-primary" data-i18n="filter" style="padding: 8px 20px;">Filter</button>
-                    <button id="btn-clear" class="btn btn-secondary" data-i18n="clear" style="padding: 8px 20px; background-color: #94a3b8; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Clear</button>
-                    <button id="btn-export" class="btn btn-success" data-i18n="exportCSV" style="padding: 8px 20px; background-color: var(--success); color: #fff; border: none; border-radius: 4px; cursor: pointer;">Export to CSV</button>
+                <div class="filter-actions-row">
+                    <button id="btn-filter" class="btn btn-primary filter-action-button" data-i18n="filter">Filter</button>
+                    <button id="btn-clear" class="btn btn-secondary filter-action-button btn-secondary-soft" data-i18n="clear">Clear</button>
+                    <button id="btn-export" class="btn btn-success filter-action-button" data-i18n="exportCSV">Export to CSV</button>
                 </div>
             </div>
 
