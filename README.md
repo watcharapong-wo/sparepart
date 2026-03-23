@@ -1,6 +1,25 @@
 # IT Spare Part Management System
 
+**Language**
+
+[![English](https://img.shields.io/badge/English-README-blue)](README.md) [![Thai](https://img.shields.io/badge/ไทย-README.th.md-green)](README.th.md)
+
 A web-based inventory and spare part management system designed to streamline tracking of IT equipment and supplies. The application provides a sleek UI with robust tracking, role-based access control, and comprehensive reporting.
+
+## Quick Start
+
+### For General Users
+
+1. Open the system at `http://localhost:5000`
+2. Sign in with your assigned account
+3. Use core menus: Dashboard, Spare Parts, Movements, Logs, and Users (based on role permissions)
+
+### For Technical Team
+
+1. Install Node.js and run `npm install`
+2. Copy `.env.example` to `.env` and configure the required variables
+3. Start the server with `npm run start` or `node index.js`
+4. Follow SQL Server migration steps under "SQL Server Migration Setup"
 
 ## ✨ Features
 
@@ -53,9 +72,9 @@ Ensure you have [Node.js](https://nodejs.org/) installed on your machine.
 
 ### SQL Server Migration Setup
 
-1. Copy [.env.example](d:/Project%20Sparepart/new-project/.env.example) to `.env` and set the `MSSQL_*` values.
+1. Copy `.env.example` to `.env` and set the `MSSQL_*` values.
 2. Keep `DB_FALLBACK_TO_SQLITE=true` while preparing migration (safe mode).
-3. Create the SQL Server schema from [schema_mssql.sql](d:/Project%20Sparepart/new-project/schema_mssql.sql).
+3. Create the SQL Server schema from `schema_mssql.sql`.
 4. Test the SQL Server connection:
 
    ```bash
