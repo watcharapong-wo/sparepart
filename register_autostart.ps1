@@ -8,7 +8,8 @@ if (-not (Test-Path $launcher)) {
 
 try {
     # Create a scheduled task action
-    $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument "`"$launcher`""
+    $wscriptExe = Join-Path $env:SystemRoot "System32\wscript.exe"
+    $action = New-ScheduledTaskAction -Execute $wscriptExe -Argument "`"$launcher`""
     
     # Create a trigger for logon
     $trigger = New-ScheduledTaskTrigger -AtLogOn

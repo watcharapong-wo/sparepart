@@ -39,7 +39,7 @@ async function loadLogs(filters = {}) {
         const row = tbody.insertRow();
         row.insertCell(0).textContent = new Date(log.timestamp).toLocaleString();
         row.insertCell(1).textContent = log.username || '-';
-        row.insertCell(2).innerHTML = `<span class="badge ${getBadgeClass(log.action)}">${escapeHtml(log.action)}</span>`;
+        row.insertCell(2).innerHTML = `<span class="badge ${getBadgeClass(log.action)}">${escapeHtml(getActionLabel(log.action))}</span>`;
         row.insertCell(3).textContent = log.details || '-';
       });
     } else {
@@ -51,11 +51,24 @@ async function loadLogs(filters = {}) {
 }
 
 function getBadgeClass(action) {
+  if (action.includes("CORRECTION") || action.includes("REVERT")) return "bg-warning";
+  if (action.includes("MOVEMENT_")) return "bg-primary";
   if (action.includes("CREATE")) return "bg-success";
   if (action.includes("UPDATE")) return "bg-primary";
   if (action.includes("DELETE")) return "bg-danger";
   if (action.includes("LOGIN")) return "bg-secondary";
   return "bg-info";
+}
+
+function getActionLabel(action) {
+  const value = String(action || "").toUpperCase();
+  if (value === "MOVEMENT_CORRECTION") return i18nText("movementCorrection", "Part Correction");
+  if (value === "MOVEMENT_OUT") return i18nText("movementOut", "Stock Out");
+  if (value === "MOVEMENT_IN") return i18nText("movementIn", "Stock In");
+  if (value === "MOVEMENT_BORROW") return i18nText("movementBorrow", "Borrow");
+  if (value === "MOVEMENT_RETURN") return i18nText("movementReturn", "Return");
+  if (value === "TRANSFER") return i18nText("movementTransfer", "Transfer");
+  return action;
 }
 
 function updateUserInfo() {
@@ -125,4 +138,19 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+});
+
+// Handle language change re-render
+window.addEventListener('languageChanged', () => {
+    const tbody = document.getElementById("logs-table-body");
+    if (!tbody || !currentLogsCache || currentLogsCache.length === 0) return;
+    
+    tbody.innerHTML = "";
+    currentLogsCache.forEach(log => {
+        const row = tbody.insertRow();
+        row.insertCell(0).textContent = new Date(log.timestamp).toLocaleString();
+        row.insertCell(1).textContent = log.username || '-';
+        row.insertCell(2).innerHTML = `<span class="badge ${getBadgeClass(log.action)}">${escapeHtml(getActionLabel(log.action))}</span>`;
+        row.insertCell(3).textContent = log.details || '-';
+    });
 });

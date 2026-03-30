@@ -102,6 +102,22 @@
   resize: vertical;
 }
 
+.serial-search-input-small {
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  width: 150px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.serial-search-input-small:focus {
+  border-color: var(--primary-color, #3b82f6);
+}
+
 .section-spacing-top {
   margin-top: 24px;
 }
@@ -222,6 +238,23 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  max-height: 85px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Custom scrollbar for serial list */
+.serial-summary-list::-webkit-scrollbar {
+  width: 4px;
+}
+.serial-summary-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.serial-summary-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
 }
 
 .serial-chip {
@@ -741,7 +774,15 @@ body.login-page {
 }
 
 .text-center {
-  text-align: center;
+  text-align: center !important;
+}
+
+.text-left {
+  text-align: left !important;
+}
+
+.text-right {
+  text-align: right !important;
 }
 
 .dashboard-grid {
@@ -885,9 +926,10 @@ table {
 
 th,
 td {
-  padding: 8px 10px;
+  padding: 10px 8px;
   text-align: left;
   border-bottom: 1px solid var(--border-color);
+  word-wrap: break-word;
 }
 
 th {
@@ -906,19 +948,28 @@ tbody tr:last-child td {
 td {
   color: var(--text-main);
   vertical-align: middle;
-  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-td.serial-status-cell,
-td.actions-cell,
-td.cell-price {
-  max-width: none;
+/* Specific Column Widths & Wrapping */
+.col-no { width: 50px; }
+.col-id { width: 60px; }
+.col-qty { width: 70px; }
+.col-price { width: 90px; }
+.col-warehouse { width: 110px; }
+
+td.col-name, 
+td.col-desc {
   white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
+  min-width: 150px;
+  max-width: 250px;
+}
+
+td.serial-status-cell {
+  min-width: 200px;
+  max-width: 320px;
+  white-space: normal;
 }
 
 td input {

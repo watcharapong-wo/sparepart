@@ -219,6 +219,8 @@ db.run(
     receipt_number TEXT,
     user_id INTEGER,
     due_date DATETIME,
+    correction_of INTEGER,
+    correction_reason TEXT,
     return_status TEXT DEFAULT 'pending',
     FOREIGN KEY (part_id) REFERENCES spare_parts(id)
   )`,
@@ -232,6 +234,8 @@ db.run(
         receipt_number: "TEXT",
         user_id: "INTEGER",
         due_date: "DATETIME",
+        correction_of: "INTEGER",
+        correction_reason: "TEXT",
         return_status: "TEXT DEFAULT 'pending'"
       };
       Object.keys(cols).forEach(col => {
@@ -403,7 +407,7 @@ function fetchSerialSummaryMap(partIds, callback) {
   }
 
   const placeholders = partIds.map(() => "?").join(", ");
-  const sql = `SELECT part_id, serial_no, initial_qty, remaining_qty, status, id
+  const sql = `SELECT part_id, serial_no, initial_qty, remaining_qty, status, price, id
                FROM spare_part_items
                WHERE part_id IN (${placeholders})
                ORDER BY part_id, CASE WHEN status = 'partial' THEN 0 ELSE 1 END, id ASC`;
@@ -413,7 +417,8 @@ function fetchSerialSummaryMap(partIds, callback) {
     const summaryMap = new Map();
     (rows || []).forEach((row) => {
       const current = summaryMap.get(row.part_id) || [];
-      current.push(`${row.serial_no} [${Number(row.remaining_qty) || 1}/${Number(row.initial_qty) || 1}]`);
+      const priceStr = row.price !== null && row.price !== undefined ? ` @${row.price}` : "";
+      current.push(`${row.serial_no} [${Number(row.remaining_qty) || 1}/${Number(row.initial_qty) || 1}]${priceStr}`);
       summaryMap.set(row.part_id, current);
     });
     callback(null, summaryMap);
@@ -482,20 +487,29 @@ function createSerialGenerator(existingRows, fallbackPartNo) {
   };
 }
 
-function insertOrGetSparePartItem(partId, serialNo, itemQty, callback) {
+function insertOrGetSparePartItem(partId, serialNo, itemQty, price, callback) {
+  // Check if serial already exists anywhere (to prevent cross-part duplication)
   db.get(
-    "SELECT id FROM spare_part_items WHERE part_id = ? AND serial_no = ?",
-    [partId, serialNo],
+    "SELECT spi.id, spi.part_id, spi.status, p.name as part_name, p.price FROM spare_part_items spi JOIN spare_parts p ON spi.part_id = p.id WHERE spi.serial_no = ?",
+    [serialNo],
     (selectErr, existingRow) => {
       if (selectErr) return callback(selectErr);
-      if (existingRow?.id) {
-        callback(null, { itemId: existingRow.id, created: false });
-        return;
+      
+      if (existingRow) {
+        if (Number(existingRow.part_id) === Number(partId)) {
+          // Already in this part, just return it
+          return callback(null, { itemId: existingRow.id, created: false });
+        } else {
+          // Exists in a DIFFERENT part! This is a duplicate error.
+          const err = new Error(`Serial ${serialNo} already exists in part "${existingRow.part_name}" (Price: ${Number(existingRow.price || 0).toLocaleString()})`);
+          err.status = 409;
+          return callback(err);
+        }
       }
 
       db.run(
-        "INSERT INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty) VALUES (?, ?, 'available', ?, ?)",
-        [partId, serialNo, itemQty, itemQty],
+        "INSERT INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty, price) VALUES (?, ?, 'available', ?, ?, ?)",
+        [partId, serialNo, itemQty, itemQty, price || 0],
         function(insertErr) {
           if (insertErr) return callback(insertErr);
           callback(null, { itemId: this.lastID, created: true });
@@ -503,6 +517,12 @@ function insertOrGetSparePartItem(partId, serialNo, itemQty, callback) {
       );
     }
   );
+}
+
+function resolveSerialStatus(remainingQty, initialQty) {
+  if (remainingQty <= 0) return "consumed";
+  if (remainingQty < initialQty) return "partial";
+  return "available";
 }
 
 function seedData() {
@@ -538,22 +558,37 @@ function authenticateToken(req, res, next) {
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ error: "Invalid token" });
+    if (user && typeof user === "object") {
+      user.role = normalizeRole(user.role);
+    }
     req.user = user;
     next();
   });
 }
 
+function normalizeRole(role) {
+  const value = String(role || "").trim().toLowerCase().replace(/[_\s]+/g, "-");
+  if (value === "coadmin") return "co-admin";
+  return value;
+}
+
 function requireRole(roles = []) {
   return (req, res, next) => {
-    if (!req.user?.role) return res.status(401).json({ error: "NO_ROLE" });
-    if (!roles.includes(req.user.role)) return res.status(403).json({ error: "FORBIDDEN" });
+    const userRole = normalizeRole(req.user?.role);
+    const allowedRoles = roles.map(normalizeRole);
+    if (!userRole) return res.status(401).json({ error: "NO_ROLE" });
+    if (!allowedRoles.includes(userRole)) return res.status(403).json({ error: "FORBIDDEN" });
     next();
   };
 }
 
 // API Register
 app.post("/register", authenticateToken, requireRole(["admin"]), (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password } = req.body;
+  const role = normalizeRole(req.body?.role);
+  if (!username || !password || !role) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
   bcrypt.hash(password, 10, (err, hashedPassword) => {
     db.run("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", [username, hashedPassword, role], function (err) {
       logActivity(req.user.userId, "REGISTER_USER", `Registered new user: ${username} with role: ${role}`);
@@ -571,9 +606,10 @@ app.post("/login", (req, res) => {
 
     bcrypt.compare(password, user.password, (err, isMatch) => {
       if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
-      const token = jwt.sign({ userId: user.id, role: user.role, username: user.username }, JWT_SECRET, { expiresIn: "10h" });
+      const normalizedRole = normalizeRole(user.role);
+      const token = jwt.sign({ userId: user.id, role: normalizedRole, username: user.username }, JWT_SECRET, { expiresIn: "10h" });
       logActivity(user.id, "LOGIN", `User ${user.username} logged in`);
-      res.json({ token, role: user.role });
+      res.json({ token, role: normalizedRole });
     });
   });
 });
@@ -675,7 +711,8 @@ app.get("/report/activity-logs", authenticateToken, requireRole(["admin"]), (req
 
 app.get("/report/movements3", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT m.*, p.name as part_name, p.part_no, u.username
+  let sql = `SELECT m.*, p.name as part_name, p.part_no, u.username,
+                    CASE WHEN EXISTS (SELECT 1 FROM stock_movements c WHERE c.correction_of = m.id) THEN 1 ELSE 0 END AS has_correction
              FROM stock_movements m
              JOIN spare_parts p ON m.part_id = p.id
              LEFT JOIN users u ON m.user_id = u.id
@@ -701,7 +738,7 @@ app.get("/report/movements3", authenticateToken, (req, res) => {
 
 app.get("/report/expense-by-warehouse", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT w.name AS warehouse_name, SUM(m.quantity * p.price) AS total_expense, SUM(m.quantity) AS total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id JOIN warehouses w ON p.warehouseId = w.id WHERE m.movement_type = 'OUT'`;
+  let sql = `SELECT w.name AS warehouse_name, SUM(m.quantity * m.price) AS total_expense, SUM(m.quantity) AS total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id JOIN warehouses w ON p.warehouseId = w.id WHERE m.movement_type = 'OUT'`;
   const params = [];
   if (warehouseId && warehouseId !== 'all') { sql += " AND p.warehouseId = ?"; params.push(warehouseId); }
   sql += " GROUP BY w.name";
@@ -732,10 +769,10 @@ app.get("/report/monthly-comparison", authenticateToken, (req, res) => {
 
 app.get("/report/withdraw-by-account", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT m.receiver, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_type IN ('OUT', 'BORROW') AND m.receiver IS NOT NULL`;
+  let sql = `SELECT p.name, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_type IN ('OUT', 'BORROW')`;
   const params = [];
   if (warehouseId && warehouseId !== 'all') { sql += " AND p.warehouseId = ?"; params.push(warehouseId); }
-  sql += ` GROUP BY m.receiver ORDER BY total_qty DESC ${sqlDialect.limit(10)}`;
+  sql += ` GROUP BY p.name ORDER BY total_qty DESC ${sqlDialect.limit(10)}`;
   db.all(sql, params, (err, rows) => res.json(rows));
 });
 
@@ -979,6 +1016,7 @@ app.get("/warehouses", authenticateToken, (req, res) => {
 // API สำหรับเพิ่มอะไหล่ใหม่
 app.post("/spareparts", authenticateToken, requireRole(["admin", "co-admin"]), (req, res) => {
   const { name, part_no, description, quantity, unit_type, conversion_rate, price, warehouseId, serials } = req.body;
+  
   if (!name || !part_no || !quantity || !warehouseId || !serials || !Array.isArray(serials) || serials.length === 0) {
     return res.status(400).json({ error: "Missing required fields" });
   }
@@ -992,22 +1030,60 @@ app.post("/spareparts", authenticateToken, requireRole(["admin", "co-admin"]), (
   }
 
   const pieceStock = Math.round(Number(quantity) * normalizedRate);
-  db.run(
-    "INSERT INTO spare_parts (name, part_no, description, quantity, unit_type, conversion_rate, piece_stock, price, warehouseId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    [name, part_no, description || '', quantity, normalizedUnit, normalizedRate, pieceStock, price || 0, warehouseId],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      const partId = this.lastID;
-      const stmt = db.prepare("INSERT INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty) VALUES (?, ?, 'available', ?, ?)");
-      serials.forEach(sn => stmt.run(partId, sn, itemInitialQty, itemInitialQty));
-      stmt.finalize((finalizeErr) => {
-        if (finalizeErr) return res.status(500).json({ error: finalizeErr.message });
+  const serialsFixed = [...new Set(serials.map(s => String(s || "").trim()).filter(Boolean))];
 
-        logActivity(req.user.userId, "ADD_SPARE_PART", `Added part ${name} (${part_no}) with ${serials.length} serials`);
-        res.status(201).json({ message: "Spare part added", partId });
-      });
-    }
-  );
+  db.serialize(() => {
+    db.run("BEGIN TRANSACTION");
+
+    // 1. Check for duplicate serials globally
+    const placeholders = serialsFixed.map(() => "?").join(",");
+    db.get(
+      `SELECT spi.serial_no, p.name as part_name, p.price 
+       FROM spare_part_items spi 
+       JOIN spare_parts p ON spi.part_id = p.id 
+       WHERE spi.serial_no IN (${placeholders})`,
+      serialsFixed,
+      (checkErr, duplicate) => {
+        if (checkErr) {
+          db.run("ROLLBACK");
+          return res.status(500).json({ error: checkErr.message });
+        }
+        if (duplicate) {
+          db.run("ROLLBACK");
+          const priceDisplay = Number(duplicate.price || 0).toLocaleString();
+          return res.status(409).json({ 
+            error: `Serial ${duplicate.serial_no} already exists in part "${duplicate.part_name}" (Price: ${priceDisplay})` 
+          });
+        }
+
+        // 2. Insert the part
+        db.run(
+          "INSERT INTO spare_parts (name, part_no, description, quantity, unit_type, conversion_rate, piece_stock, price, warehouseId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [name, part_no, description || '', quantity, normalizedUnit, normalizedRate, pieceStock, price || 0, warehouseId],
+          function (err) {
+            if (err) {
+              db.run("ROLLBACK");
+              return res.status(500).json({ error: err.message });
+            }
+            const partId = this.lastID;
+
+            // 3. Insert serial items
+            const stmt = db.prepare("INSERT INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty, price) VALUES (?, ?, 'available', ?, ?, ?)");
+            serialsFixed.forEach(sn => stmt.run(partId, sn, itemInitialQty, itemInitialQty, price || 0));
+            stmt.finalize((finalizeErr) => {
+              if (finalizeErr) {
+                db.run("ROLLBACK");
+                return res.status(500).json({ error: finalizeErr.message });
+              }
+              db.run("COMMIT");
+              logActivity(req.user.userId, "ADD_SPARE_PART", `Added part ${name} (${part_no}) with ${serialsFixed.length} serials`);
+              res.status(201).json({ message: "Spare part added", partId });
+            });
+          }
+        );
+      }
+    );
+  });
 });
 
 // API สำหรับแก้ไขอะไหล่
@@ -1121,8 +1197,8 @@ app.put("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin"])
 
                   const serialNo = generateSerialNo();
                   db.run(
-                    "INSERT INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty) VALUES (?, ?, 'available', ?, ?)",
-                    [id, serialNo, itemInitialQty, itemInitialQty],
+                    "INSERT INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty, price) VALUES (?, ?, 'available', ?, ?, ?)",
+                    [id, serialNo, itemInitialQty, itemInitialQty, Number(price) || Number(partMeta.price || 0)],
                     (insertErr) => {
                       if (insertErr) {
                         db.run("ROLLBACK");
@@ -1246,6 +1322,83 @@ app.delete("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin
     });
   });
 });
+// API สำหรับแบ่งแยกอะไหล่ (Split Part) ออกไปเป็นรายการใหม่ตาม Description ที่ต้องการ
+app.post("/spareparts/:id/split", authenticateToken, requireRole(["admin", "co-admin"]), (req, res) => {
+  const sourcePartId = req.params.id;
+  const { serial_ids, new_description } = req.body;
+  
+  if (!serial_ids || !Array.isArray(serial_ids) || serial_ids.length === 0 || !new_description) {
+    return res.status(400).json({ error: "Missing serial_ids or new_description" });
+  }
+
+  db.serialize(() => {
+    db.run("BEGIN TRANSACTION");
+
+    // 1. ดึงข้อมูลต้นฉบับ
+    db.get("SELECT * FROM spare_parts WHERE id = ?", [sourcePartId], (err, part) => {
+      if (err || !part) {
+        db.run("ROLLBACK");
+        return res.status(404).json({ error: "Source part not found" });
+      }
+
+      // 2. สร้าง Part ใหม่ (Copy ข้อมูลเดิมแต่เปลี่ยน Description)
+      db.run(
+        "INSERT INTO spare_parts (name, part_no, description, quantity, unit_type, conversion_rate, piece_stock, price, warehouseId) VALUES (?, ?, ?, 0, ?, ?, 0, ?, ?)",
+        [part.name, part.part_no, new_description, part.unit_type, part.conversion_rate, part.price, part.warehouseId],
+        function (err) {
+          if (err) {
+            db.run("ROLLBACK");
+            return res.status(500).json({ error: err.message });
+          }
+          const newPartId = this.lastID;
+          const placeholders = serial_ids.map(() => "?").join(",");
+
+          // 3. ย้าย Serial Items ไปยัง Part ใหม่
+          db.run(
+            `UPDATE spare_part_items SET part_id = ? WHERE id IN (${placeholders}) AND part_id = ?`,
+            [newPartId, ...serial_ids, sourcePartId],
+            (err) => {
+              if (err) {
+                db.run("ROLLBACK");
+                return res.status(500).json({ error: err.message });
+              }
+
+              // 4. ย้าย Movement History ที่เกี่ยวข้อง (ที่มี Serial Items เหล่านี้อยู่)
+              db.run(
+                `UPDATE stock_movements SET part_id = ? 
+                 WHERE id IN (SELECT movement_id FROM movement_items WHERE item_id IN (${placeholders}))`,
+                [newPartId, ...serial_ids],
+                (err) => {
+                  if (err) {
+                    db.run("ROLLBACK");
+                    return res.status(500).json({ error: err.message });
+                  }
+
+                  // 5. คำนวณจำนวนคงเหลือ (Quantity) ใหม่ให้กับทั้ง 2 Part
+                  const updateQtys = (pid, done) => {
+                    db.get("SELECT SUM(remaining_qty) as total_piece FROM spare_part_items WHERE part_id = ? AND (status='available' OR status='partial')", [pid], (err, row) => {
+                      const pieceStock = row ? (Number(row.total_piece) || 0) : 0;
+                      const convRate = Math.max(1, Number(part.conversion_rate) || 1);
+                      const unitQty = Math.ceil(pieceStock / convRate);
+                      db.run("UPDATE spare_parts SET quantity = ?, piece_stock = ? WHERE id = ?", [unitQty, pieceStock, pid], done);
+                    });
+                  };
+
+                  updateQtys(sourcePartId, () => {
+                    updateQtys(newPartId, () => {
+                      db.run("COMMIT");
+                      res.json({ message: "Split completed successfully", newPartId });
+                    });
+                  });
+                }
+              );
+            }
+          );
+        }
+      );
+    });
+  });
+});
 
 // API สำหรับดึงเลข Serial ของอะไหล่แต่ละชิ้น
 app.get("/spareparts/:id/serials", authenticateToken, (req, res) => {
@@ -1262,7 +1415,7 @@ app.get("/spareparts/:id/serials", authenticateToken, (req, res) => {
 
 // API สำหรับบันทึกการเบิกจ่าย (Stock Movement)
 app.post("/stock-movements", authenticateToken, (req, res) => {
-  const { part_id, movement_type, quantity, department, receiver, receipt_number, note, due_date, serial_ids, new_serials } = req.body;
+  const { part_id, movement_type, quantity, department, receiver, receipt_number, note, due_date, serial_ids, new_serials, price } = req.body;
   const userId = req.user.userId;
   const reqId = req.requestId || "n/a";
   const selectedSerialIds = Array.isArray(serial_ids)
@@ -1529,19 +1682,40 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
           );
         };
 
-        const moveSql = `INSERT INTO stock_movements (part_id, movement_type, quantity, department, receiver, receipt_number, note, user_id, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        db.run(moveSql, [part_id, movement_type, requestedQty, department, receiver, receipt_number, note, userId, due_date || null], function(err) {
-          if (err) return rollbackWith(500, err.message);
-          const movementId = this.lastID;
-          console.log(`[${reqId}] [MOVEMENT] Inserted stock_movements row`, { movementId });
+        const getMovePrice = (callback) => {
+          if (movement_type === "IN") {
+            return callback(Number(price) || Number(partMeta.price || 0));
+          }
+          if (selectedSerialIds.length > 0) {
+            const placeholders = selectedSerialIds.map(() => "?").join(",");
+            db.get(`SELECT AVG(price) as avg_price FROM spare_part_items WHERE id IN (${placeholders})`, selectedSerialIds, (err, row) => {
+              if (err || !row || row.avg_price === null) {
+                return callback(Number(partMeta.price || 0));
+              }
+              callback(Number(row.avg_price));
+            });
+          } else {
+            callback(Number(partMeta.price || 0));
+          }
+        };
+
+        getMovePrice((movePrice) => {
+          const moveSql = "INSERT INTO stock_movements (part_id, movement_type, quantity, department, receiver, receipt_number, note, user_id, due_date, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+          db.run(moveSql, [part_id, movement_type, requestedQty, department, receiver, receipt_number, note, userId, due_date || null, movePrice], function(err) {
+            if (err) return rollbackWith(500, err.message);
+            const movementId = this.lastID;
+            console.log(`[${reqId}] [MOVEMENT] Inserted stock_movements row`, { movementId, movePrice });
 
           if (movement_type === "IN" && normalizedNewSerials.length > 0) {
+            // Note: We no longer update spare_parts.price here to avoid overwriting the master price for the whole lot.
+            // Individual SP no prices are handled inside insertOrGetSparePartItem.
+
             const itemQty = usesPackUnit ? convInt : 1;
             let insertIndex = 0;
             const insertNext = () => {
               if (insertIndex >= normalizedNewSerials.length) return finalizeMovement(movementId, normalizedNewSerials);
               const serialNo = normalizedNewSerials[insertIndex];
-              insertOrGetSparePartItem(part_id, serialNo, itemQty, (insertErr, result) => {
+              insertOrGetSparePartItem(part_id, serialNo, itemQty, price, (insertErr, result) => {
                 if (insertErr) return rollbackWith(500, insertErr.message);
                 if (!result?.created) {
                   return rollbackWith(409, `Duplicate SP no already exists: ${serialNo}`);
@@ -1602,8 +1776,219 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
           return finalizeMovement(movementId, []);
         });
       });
-    }
-  );
+    });
+  });
+});
+
+app.post("/stock-movements/:id/correct", authenticateToken, requireRole(["admin", "co-admin"]), (req, res) => {
+  const originalMovementId = Number(req.params.id);
+  const reason = String(req.body?.reason || "").trim();
+  const userId = req.user.userId;
+
+  if (!originalMovementId) {
+    return res.status(400).json({ error: "Invalid movement id" });
+  }
+
+  if (!reason) {
+    return res.status(400).json({ error: "Correction reason is required" });
+  }
+
+  const rollbackWith = (status, message) => {
+    db.run("ROLLBACK");
+    return res.status(status).json({ error: message });
+  };
+
+  db.serialize(() => {
+    db.run("BEGIN TRANSACTION");
+
+    db.get(
+      `SELECT m.*, p.name AS part_name, p.part_no, p.unit_type, COALESCE(p.conversion_rate, 1) AS conversion_rate
+       FROM stock_movements m
+       JOIN spare_parts p ON p.id = m.part_id
+       WHERE m.id = ?`,
+      [originalMovementId],
+      (fetchErr, original) => {
+        if (fetchErr) return rollbackWith(500, fetchErr.message);
+        if (!original) return rollbackWith(404, "Original movement not found");
+        if (original.correction_of) return rollbackWith(400, "Cannot correct a correction entry");
+        if (String(original.movement_type || "").toUpperCase() === "TRANSFER") {
+          return rollbackWith(400, "Transfer correction is not supported yet");
+        }
+
+        db.get(
+          "SELECT id FROM stock_movements WHERE correction_of = ?",
+          [originalMovementId],
+          (existingErr, existingCorrection) => {
+            if (existingErr) return rollbackWith(500, existingErr.message);
+            if (existingCorrection?.id) {
+              return rollbackWith(409, "This movement already has a correction record");
+            }
+
+            db.all(
+              `SELECT mi.item_id, mi.used_qty, mi.before_qty, mi.after_qty,
+                      spi.serial_no,
+                      COALESCE(spi.initial_qty, 1) AS initial_qty,
+                      COALESCE(spi.remaining_qty, 1) AS remaining_qty
+               FROM movement_items mi
+               JOIN spare_part_items spi ON spi.id = mi.item_id
+               WHERE mi.movement_id = ?
+               ORDER BY mi.id ASC`,
+              [originalMovementId],
+              (itemsErr, movementItems) => {
+                if (itemsErr) return rollbackWith(500, itemsErr.message);
+                if (!Array.isArray(movementItems) || movementItems.length === 0) {
+                  return rollbackWith(400, "Original movement has no serial usage details");
+                }
+
+                const originalType = String(original.movement_type || "").toUpperCase();
+                const correctionTypeMap = {
+                  OUT: "RETURN",
+                  BORROW: "RETURN",
+                  RETURN: "OUT",
+                  IN: "OUT"
+                };
+                const correctionType = correctionTypeMap[originalType];
+                if (!correctionType) return rollbackWith(400, "Unsupported movement type for correction");
+
+                const addBackQty = originalType === "OUT" || originalType === "BORROW";
+                const touchedRows = [];
+                let idx = 0;
+
+                const updateNextSerial = () => {
+                  if (idx >= movementItems.length) return insertCorrectionMovement();
+
+                  const row = movementItems[idx];
+                  const usedQty = Math.max(1, Number(row.used_qty) || 1);
+                  const initialQty = Math.max(1, Number(row.initial_qty) || 1);
+                  const currentRemaining = Math.max(0, Number(row.remaining_qty) || 0);
+                  const nextRemaining = addBackQty
+                    ? currentRemaining + usedQty
+                    : currentRemaining - usedQty;
+
+                  if (nextRemaining < 0) {
+                    return rollbackWith(409, `Cannot correct movement: serial ${row.serial_no} has insufficient remaining quantity`);
+                  }
+                  if (nextRemaining > initialQty) {
+                    return rollbackWith(409, `Cannot correct movement: serial ${row.serial_no} would exceed initial quantity`);
+                  }
+
+                  const nextStatus = resolveSerialStatus(nextRemaining, initialQty);
+                  db.run(
+                    "UPDATE spare_part_items SET remaining_qty = ?, status = ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    [nextRemaining, nextStatus, row.item_id],
+                    (updateErr) => {
+                      if (updateErr) return rollbackWith(500, updateErr.message);
+                      touchedRows.push({
+                        item_id: row.item_id,
+                        serial_no: row.serial_no,
+                        used_qty: usedQty,
+                        before_qty: currentRemaining,
+                        after_qty: nextRemaining
+                      });
+                      idx += 1;
+                      updateNextSerial();
+                    }
+                  );
+                };
+
+                const recalculatePartTotals = (done) => {
+                  db.get(
+                    "SELECT COALESCE(SUM(COALESCE(remaining_qty, 0)), 0) AS remaining_sum FROM spare_part_items WHERE part_id = ?",
+                    [original.part_id],
+                    (sumErr, sumRow) => {
+                      if (sumErr) return done(sumErr);
+
+                      const pieceStock = Math.max(0, Number(sumRow?.remaining_sum) || 0);
+                      const convInt = Math.max(1, Math.round(Number(original.conversion_rate) || 1));
+                      const unitType = normalizeUnitType(original.unit_type);
+                      const qty = isPackUnit(unitType)
+                        ? Math.ceil(pieceStock / convInt)
+                        : pieceStock;
+
+                      db.run(
+                        "UPDATE spare_parts SET quantity = ?, piece_stock = ? WHERE id = ?",
+                        [qty, pieceStock, original.part_id],
+                        done
+                      );
+                    }
+                  );
+                };
+
+                const insertCorrectionMovementItems = (correctionMovementId, done) => {
+                  let itemIndex = 0;
+                  const insertNext = () => {
+                    if (itemIndex >= touchedRows.length) return done();
+                    const row = touchedRows[itemIndex];
+                    db.run(
+                      "INSERT INTO movement_items (movement_id, item_id, used_qty, before_qty, after_qty) VALUES (?, ?, ?, ?, ?)",
+                      [correctionMovementId, row.item_id, row.used_qty, row.before_qty, row.after_qty],
+                      (insertErr) => {
+                        if (insertErr) return done(insertErr);
+                        itemIndex += 1;
+                        insertNext();
+                      }
+                    );
+                  };
+                  insertNext();
+                };
+
+                const insertCorrectionMovement = () => {
+                  const correctionNote = `[CORRECTION of #${originalMovementId}] ${reason}`;
+
+                  db.run(
+                    `INSERT INTO stock_movements
+                     (part_id, movement_type, quantity, department, receiver, receipt_number, note, user_id, due_date, return_status, correction_of, correction_reason)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                      original.part_id,
+                      correctionType,
+                      Number(original.quantity) || 0,
+                      original.department || null,
+                      original.receiver || null,
+                      original.receipt_number || null,
+                      correctionNote,
+                      userId,
+                      null,
+                      original.return_status || "pending",
+                      originalMovementId,
+                      reason
+                    ],
+                    function(insertErr) {
+                      if (insertErr) return rollbackWith(500, insertErr.message);
+
+                      const correctionMovementId = this.lastID;
+                      insertCorrectionMovementItems(correctionMovementId, (linkErr) => {
+                        if (linkErr) return rollbackWith(500, linkErr.message);
+
+                        recalculatePartTotals((recalcErr) => {
+                          if (recalcErr) return rollbackWith(500, recalcErr.message);
+
+                          db.run("COMMIT");
+                          logActivity(
+                            userId,
+                            "MOVEMENT_CORRECTION",
+                            `Corrected movement #${originalMovementId} with #${correctionMovementId}: ${reason}`
+                          );
+
+                          res.status(201).json({
+                            message: "Correction created successfully",
+                            correctionMovementId,
+                            originalMovementId
+                          });
+                        });
+                      });
+                    }
+                  );
+                };
+
+                updateNextSerial();
+              }
+            );
+          }
+        );
+      }
+    );
+  });
 });
 
 // API สำหรับโอนย้ายคลัง
@@ -1657,7 +2042,7 @@ app.post("/spareparts/transfer", authenticateToken, (req, res) => {
       }
 
       const placeholders = selectedSerialIds.map(() => "?").join(",");
-      const serialQuery = `SELECT id, serial_no, COALESCE(remaining_qty, 1) AS remaining_qty
+      const serialQuery = `SELECT id, serial_no, price, COALESCE(remaining_qty, 1) AS remaining_qty
                            FROM spare_part_items
                            WHERE part_id = ? AND id IN (${placeholders}) AND COALESCE(remaining_qty, 0) > 0`;
 
@@ -1679,6 +2064,8 @@ app.post("/spareparts/transfer", authenticateToken, (req, res) => {
         }
 
         const serialNosForNotification = (serialRows || []).map((row) => row.serial_no).filter(Boolean).join(", ") || "-";
+        const sumPrice = (serialRows || []).reduce((sum, row) => sum + (Number(row.price) || 0), 0);
+        const avgPrice = (serialRows || []).length > 0 ? sumPrice / (serialRows || []).length : (part.price || 0);
         const conversionRate = Math.max(1, Number(part.conversion_rate) || 1);
 
         db.run(
@@ -1715,7 +2102,12 @@ app.post("/spareparts/transfer", authenticateToken, (req, res) => {
                         return res.status(500).json({ error: moveErr.message });
                       }
 
-                      db.run("COMMIT");
+                      const moveSql = "INSERT INTO stock_movements (part_id, movement_type, quantity, department, receiver, receipt_number, note, user_id, price) VALUES (?, 'TRANSFER', ?, 'INTERNAL', 'SYSTEM', '-', ?, ?, ?)";
+                      const moveNote = `Transfer to warehouse ID ${target_warehouse_id}. ${note || ""}`;
+                      db.run(moveSql, [part_id, transferQty, moveNote, userId, avgPrice], (smErr) => {
+                        if (smErr) console.error("[TRANSFER] Failed to log movement:", smErr.message);
+                        db.run("COMMIT");
+                      });
 
                       db.all("SELECT id, name FROM warehouses WHERE id IN (?, ?)", [part.warehouseId || 0, target_warehouse_id], (wErr, warehouseRows) => {
                         if (!wErr) {

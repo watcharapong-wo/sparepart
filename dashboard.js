@@ -38,11 +38,12 @@ async function loadDashboard() {
   const welcomeMsg = document.getElementById("welcome-message");
   const icons = ["👋", "✨", "🌟", "😊", "🚀", "💻", "🛠️"];
   const randomIcon = icons[Math.floor(Math.random() * icons.length)];
-  if (welcomeMsg) welcomeMsg.innerText = `Welcome, ${username} ${randomIcon}`;
+  if (welcomeMsg) welcomeMsg.innerText = `${i18nText("welcome", "Welcome")}, ${username} ${randomIcon}`;
   
   const dateEl = document.getElementById("current-date");
   if (dateEl) {
-    dateEl.innerText = new Date().toLocaleDateString('th-TH', { 
+    const locale = currentLang === 'th' ? 'th-TH' : 'en-US';
+    dateEl.innerText = new Date().toLocaleDateString(locale, { 
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
     });
   }
@@ -180,8 +181,8 @@ function renderTrendChart(trends) {
     data: {
       labels: dates.map(d => formatDate(d)),
       datasets: [
-        { label: 'Stock IN', data: inData, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4 },
-        { label: 'Stock OUT', data: outData, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.4 }
+        { label: i18nText("movementIn", "Stock IN"), data: inData, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.4 },
+        { label: i18nText("movementOut", "Stock OUT"), data: outData, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.4 }
       ]
     },
     options: { maintainAspectRatio: false, plugins: { legend: { position: 'top' } } }
@@ -215,7 +216,7 @@ function renderWarehouseChart(data) {
         cutout: '70%', 
         plugins: { 
           legend: { position: 'bottom' },
-          title: { display: true, text: 'Inventory by Warehouse' }
+          title: { display: true, text: i18nText("inventoryByWarehouse", "Inventory by Warehouse") }
         } 
       }
     });
@@ -226,7 +227,7 @@ function renderWarehouseChart(data) {
       data: {
         labels: data.map(d => `${d.part_no} - ${d.name.substring(0, 20)}`),
         datasets: [{
-          label: 'Times Consumed',
+          label: i18nText("timesConsumed", "Times Consumed"),
           data: data.map(d => d.total_consumed),
           backgroundColor: '#8b5cf6',
           borderRadius: 4
@@ -238,7 +239,7 @@ function renderWarehouseChart(data) {
         scales: { x: { beginAtZero: true } },
         plugins: {
           legend: { position: 'top' },
-          title: { display: true, text: 'Top 5 Parts Consumed' }
+          title: { display: true, text: i18nText("topPartsConsumed", "Top 5 Parts Consumed") }
         }
       }
     });
@@ -260,8 +261,8 @@ function renderMonthlyChart(data) {
     data: {
       labels: months,
       datasets: [
-        { label: 'Stock IN', data: inData, backgroundColor: '#10b981', borderRadius: 4 },
-        { label: 'Stock OUT', data: outData, backgroundColor: '#ef4444', borderRadius: 4 }
+        { label: i18nText("movementIn", "Stock IN"), data: inData, backgroundColor: '#10b981', borderRadius: 4 },
+        { label: i18nText("movementOut", "Stock OUT"), data: outData, backgroundColor: '#ef4444', borderRadius: 4 }
       ]
     },
     options: { 
@@ -320,18 +321,25 @@ async function loadOverdueAlerts() {
 }
 
 function renderAccountChart(data, warehouseId) {
+  console.log("renderAccountChart called with data:", data);
   const chartEl = document.getElementById("account-chart");
   if (!chartEl) return;
   const ctx = chartEl.getContext("2d");
   
   if (charts.account) charts.account.destroy();
+  
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    console.warn("No data for account chart");
+    // Show empty state if needed, or just let Chart.js show empty
+  }
+
   charts.account = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: data.map(d => d.receiver),
+      labels: data.map(d => String(d.name || "Unknown")),
       datasets: [{
-        label: 'Total Quantity Withdrawn',
-        data: data.map(d => d.total_qty),
+        label: i18nText("withdrawalsByAccount", "Top 10 Parts Withdrawn"),
+        data: data.map(d => Number(d.total_qty || 0)),
         backgroundColor: 'rgba(139, 92, 246, 0.6)',
         borderColor: '#8b5cf6',
         borderWidth: 1,
@@ -341,8 +349,12 @@ function renderAccountChart(data, warehouseId) {
     options: {
       indexAxis: 'y',
       maintainAspectRatio: false,
+      responsive: true,
       scales: {
-        x: { beginAtZero: true }
+        x: { 
+          beginAtZero: true,
+          ticks: { stepSize: 1 }
+        }
       },
       plugins: {
         legend: { display: false }
@@ -367,7 +379,7 @@ async function loadInsights(warehouseId) {
           <td class="text-success">${p.total_consumed}</td>
         </tr>
       `).join("");
-      if (!data.popular || data.popular.length === 0) popularTable.innerHTML = '<tr><td colspan="3" class="text-center">No data</td></tr>';
+      if (!data.popular || data.popular.length === 0) popularTable.innerHTML = `<tr><td colspan="3" class="text-center">${i18nText("noData", "No data")}</td></tr>`;
     }
 
     const lowStockTable = document.querySelector("#low-stock-table tbody");
@@ -379,7 +391,7 @@ async function loadInsights(warehouseId) {
           <td>${escapeHtml(p.warehouse_name || '-')}</td>
         </tr>
       `).join("");
-      if (!data.lowStock || data.lowStock.length === 0) lowStockTable.innerHTML = '<tr><td colspan="3" class="text-center">No low stock risk</td></tr>';
+      if (!data.lowStock || data.lowStock.length === 0) lowStockTable.innerHTML = `<tr><td colspan="3" class="text-center">${i18nText("noLowStockRisk", "No low stock risk")}</td></tr>`;
     }
 
     const overdueTable = document.querySelector("#overdue-insights-table tbody");
@@ -391,7 +403,7 @@ async function loadInsights(warehouseId) {
           <td class="text-danger">${escapeHtml(item.days_overdue ?? '-')}</td>
         </tr>
       `).join("");
-      if (!data.overdue || data.overdue.length === 0) overdueTable.innerHTML = '<tr><td colspan="3" class="text-center">No overdue items</td></tr>';
+      if (!data.overdue || data.overdue.length === 0) overdueTable.innerHTML = `<tr><td colspan="3" class="text-center">${i18nText("noOverdueItems", "No overdue items")}</td></tr>`;
     }
 
     // Render Dead Stock
@@ -402,10 +414,10 @@ async function loadInsights(warehouseId) {
           <td>${p.partType || p.part_no}</td>
           <td>${p.name}</td>
           <td>${Number(p.stock_value || 0).toLocaleString()}</td>
-          <td class="text-danger">${p.last_movement ? new Date(p.last_movement).toLocaleDateString() : 'Never'}</td>
+          <td class="text-danger">${p.last_movement ? new Date(p.last_movement).toLocaleDateString(currentLang === 'th' ? 'th-TH' : 'en-US') : i18nText("never", "Never")}</td>
         </tr>
       `).join("");
-      if (!data.deadStock || data.deadStock.length === 0) deadTable.innerHTML = '<tr><td colspan="4" class="text-center">No dead stock</td></tr>';
+      if (!data.deadStock || data.deadStock.length === 0) deadTable.innerHTML = `<tr><td colspan="4" class="text-center">${i18nText("noDeadStock", "No dead stock")}</td></tr>`;
     }
   }
 }
@@ -434,3 +446,30 @@ async function exportInventory() {
     if (typeof showToast === "function") showToast("Export failed: " + err.message, "error");
   }
 }
+
+// Handle language change re-render
+window.addEventListener('languageChanged', () => {
+    // Refresh welcome message and date
+    const username = localStorage.getItem("username") || "User";
+    const welcomeMsg = document.getElementById("welcome-message");
+    const icons = ["👋", "✨", "🌟", "😊", "🚀", "💻", "🛠️"];
+    const randomIcon = icons[Math.floor(Math.random() * icons.length)];
+    if (welcomeMsg) welcomeMsg.innerText = `${i18nText("welcome", "Welcome")}, ${username} ${randomIcon}`;
+    
+    const dateEl = document.getElementById("current-date");
+    if (dateEl) {
+        const locale = currentLang === 'th' ? 'th-TH' : 'en-US';
+        dateEl.innerText = new Date().toLocaleDateString(locale, { 
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+        });
+    }
+
+    // Refresh charts and insights
+    try {
+        loadDashboard();
+        const whId = document.getElementById("warehouse-filter")?.value || 'all';
+        loadInsights(whId);
+    } catch(err) {
+        console.error("Language change refresh error:", err);
+    }
+});

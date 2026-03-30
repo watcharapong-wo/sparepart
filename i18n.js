@@ -36,6 +36,8 @@ const translations = {
     recordMovement: "Record Stock Movement",
     stockIn: "Stock IN",
     stockOut: "Stock OUT",
+    borrow: "Borrow",
+    return: "Return",
     stockAdjust: "Stock ADJUST",
     receiptNumber: "Request Number",
     unitType: "Unit Type",
@@ -61,7 +63,7 @@ const translations = {
     timestamp: "Timestamp",
     user: "User",
     action: "Action",
-    withdrawalsByAccount: "Withdrawals by Account",
+    withdrawalsByAccount: "Top 10 Parts Withdrawn (Quantity)",
     importSuccess: "Parts imported successfully: ",
     importError: "Import failed: ",
     saveSuccess: "Saved successfully",
@@ -122,7 +124,25 @@ const translations = {
     packInfoCurrent: "Current: {boxes} {unit} ({pieces} pieces)",
     packInfoRemaining: "Remaining: {pieces} pieces ({boxes} {unit}) - 1 {unit} = {rate} pieces",
     packAutoAllocateHint: "System will consume the current SP no until empty, then continue with the next one.",
-    noAvailableSpNo: "No available SP no for this part."
+    noAvailableSpNo: "No available SP no for this part.",
+    returnStatus: "Return Status",
+    itemReturned: "Returned Item",
+    returnedAlready: "Returned",
+    returnBtn: "Return",
+    loadingHistory: "Loading history...",
+    movementCorrection: "Part Correction",
+    movementOut: "Stock Out",
+    movementIn: "Stock In",
+    movementBorrow: "Borrow",
+    movementReturn: "Return",
+    movementTransfer: "Transfer",
+    welcome: "Welcome",
+    inventoryByWarehouse: "Inventory by Warehouse",
+    topPartsConsumed: "Top 5 Parts Consumed",
+    noLowStockRisk: "No low stock risk",
+    noOverdueItems: "No overdue items",
+    never: "Never",
+    noDeadStock: "No dead stock"
   },
   th: {
     dashboard: "แผงควบคุม",
@@ -182,7 +202,7 @@ const translations = {
     timestamp: "วันเวลา",
     user: "ผู้ใช้งาน",
     action: "กิจกรรม",
-    withdrawalsByAccount: "ยอดการเบิกแยกตามบัญชีผู้รับ",
+    withdrawalsByAccount: "สถิติการเบิกอะไหล่สูงสุด 10 อันดับ (ชิ้น)",
     importSuccess: "นำเข้าข้อมูลสำเร็จ: ",
     importError: "นำเข้าข้อมูลล้มเหลว: ",
     saveSuccess: "บันทึกข้อมูลเรียบร้อยแล้ว",
@@ -250,7 +270,25 @@ const translations = {
     packInfoCurrent: "ปัจจุบัน: {boxes} {unit} ({pieces} ชิ้น)",
     packInfoRemaining: "คงเหลือ: {pieces} ชิ้น ({boxes} {unit}) - 1 {unit} = {rate} ชิ้น",
     packAutoAllocateHint: "ระบบจะหักจาก SP no ที่ค้างอยู่ก่อนจนหมด แล้วค่อยใช้ SP no ถัดไป",
-    noAvailableSpNo: "ไม่พบ SP no ที่พร้อมใช้งานสำหรับอะไหล่นี้"
+    noAvailableSpNo: "ไม่พบ SP no ที่พร้อมใช้งานสำหรับอะไหล่นี้",
+    returnStatus: "สถานะการคืน",
+    itemReturned: "รายการคืนกลับ",
+    returnedAlready: "คืนกลับแล้ว",
+    returnBtn: "คืนกลับ",
+    loadingHistory: "กำลังโหลดข้อมูล...",
+    movementCorrection: "คืนกลับ PART",
+    movementOut: "เบิกออก",
+    movementIn: "รับเข้า",
+    movementBorrow: "ยืม",
+    movementReturn: "คืน",
+    movementTransfer: "โอนย้าย",
+    welcome: "ยินดีต้อนรับ",
+    inventoryByWarehouse: "มูลค่าคลังสินค้าแยกตามคลัง",
+    topPartsConsumed: "อะไหล่ที่ถูกเบิกสูงสุด 5 อันดับ",
+    noLowStockRisk: "ไม่มีความเสี่ยงสต็อกต่ำ",
+    noOverdueItems: "ไม่มีรายการค้างคืน",
+    never: "ไม่เคย",
+    noDeadStock: "ไม่มีอะไหล่ค้างคลัง"
   }
 };
 
@@ -262,6 +300,7 @@ function toggleLanguage() {
   applyTranslations();
   const langBtn = document.getElementById('lang-toggle-btn');
   if(langBtn) langBtn.textContent = currentLang === 'en' ? '🇹🇭 TH' : '🇬🇧 EN';
+  window.dispatchEvent(new CustomEvent('languageChanged', { detail: { lang: currentLang } }));
 }
 
 function applyTranslations() {
@@ -306,6 +345,13 @@ function displayUserStatus() {
   const t = translations[currentLang] || translations.en;
   const label = (t && t.loggedInAs) ? t.loggedInAs : (currentLang === 'th' ? "ผู้ใช้งาน:" : "User:");
   userStatusEl.textContent = `${label} ${username} (${role.toUpperCase()})`;
+}
+
+function i18nText(key, fallback = "") {
+  if (typeof translations === "undefined" || typeof currentLang === "undefined") {
+    return fallback;
+  }
+  return translations?.[currentLang]?.[key] || fallback;
 }
 
 document.addEventListener("DOMContentLoaded", () => {

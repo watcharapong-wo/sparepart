@@ -93,20 +93,26 @@
     </div>
 
     <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 class="card-title no-margin" data-i18n="inventoryTable">Spare Parts Inventory</h2>
+        <div style="max-width: 300px; flex-grow: 1;">
+          <input type="text" id="spareparts-table-search" placeholder="Search Name, Part Type, Detail or SP no..." class="premium-search-input" style="width: 100%; border-radius: 8px;">
+        </div>
+      </div>
       <div class="table-responsive">
       <table id="spareparts-table">
         <thead>
           <tr>
-            <th data-i18n="no">No.</th>
-            <th data-i18n="id">ID</th>
-            <th data-i18n="name">Name</th>
+            <th data-i18n="no" class="text-center col-no">No.</th>
+            <th data-i18n="id" class="text-center col-id">ID</th>
+            <th data-i18n="name" class="col-name">Name</th>
             <th data-i18n="partType">Part Type</th>
-            <th data-i18n="description">Description</th>
-            <th data-i18n="quantity">Quantity</th>
+            <th data-i18n="description" class="col-desc">Description</th>
+            <th data-i18n="quantity" class="text-center col-qty">Quantity</th>
             <th data-i18n="spNoStatus">SP No Status</th>
-            <th data-i18n="price">Price</th>
-            <th data-i18n="warehouseHeader">Warehouse</th>
-            <th data-i18n="actions" data-role-required="admin,co-admin">Actions</th>
+            <th data-i18n="price" class="text-center col-price">Price</th>
+            <th data-i18n="warehouseHeader" class="col-warehouse">Warehouse</th>
+            <th data-i18n="actions" data-role-required="admin,co-admin" class="text-center">Actions</th>
           </tr>
         </thead>
         <tbody>

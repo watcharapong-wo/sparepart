@@ -1,6 +1,12 @@
 window.API_URL = `${window.location.protocol}//${window.location.hostname}:${window.location.port}`;
 const API_URL = window.API_URL;
 
+function normalizeRole(role) {
+  const value = String(role || "").trim().toLowerCase().replace(/[_\s]+/g, "-");
+  if (value === "coadmin") return "co-admin";
+  return value;
+}
+
 function handleAuthFailure(status) {
   if (status !== 401 && status !== 403) return;
   localStorage.removeItem("token");
@@ -114,9 +120,12 @@ function updateUserStatus() {
 }
 
 function checkPermissions() {
-  const userRole = localStorage.getItem("role") || "viewer";
+  const userRole = normalizeRole(localStorage.getItem("role") || "viewer");
   document.querySelectorAll("[data-role-required]").forEach((el) => {
-    const requiredRoles = el.getAttribute("data-role-required").split(",");
+    const requiredRoles = el
+      .getAttribute("data-role-required")
+      .split(",")
+      .map((role) => normalizeRole(role));
     if (!requiredRoles.includes(userRole)) el.style.display = "none";
   });
   const userMgmtLink = document.getElementById("nav-users");

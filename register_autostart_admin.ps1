@@ -5,7 +5,8 @@ $registerScript = Join-Path $scriptPath "register_autostart.ps1"
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "This script requires administrator privileges."
     Write-Host "Requesting elevation..."
-    Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -File `"$registerScript`"" -Wait
+    $powerShellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    Start-Process -FilePath $powerShellExe -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -File `\"$registerScript`\"" -Wait
     exit
 }
 

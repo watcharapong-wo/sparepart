@@ -1,5 +1,8 @@
 // This file now focuses entirely on Spare Parts Management (index.html)
-const _userRole = localStorage.getItem("role");
+const _userRole = String(localStorage.getItem("role") || "")
+  .trim()
+  .toLowerCase()
+  .replace(/[_\s]+/g, "-");
 if (_userRole === "staff") {
   window.location.href = "dashboard.html";
 }
@@ -93,7 +96,7 @@ function renderSerialSummaryHtml(summary) {
 
   const items = lines.map((line) => {
     const safeLine = escapeHtml(line);
-    const match = line.match(/^(.*)\[(\d+)\/(\d+)\]$/);
+    const match = line.match(/^(.*)\[(\d+)\/(\d+)\](?: @([\d.]+))?$/);
     if (!match) {
       return `<span class="serial-chip serial-chip-neutral">${safeLine}</span>`;
     }
@@ -101,11 +104,12 @@ function renderSerialSummaryHtml(summary) {
     const serialNo = escapeHtml(match[1].trim());
     const remaining = Number(match[2]);
     const initial = Number(match[3]);
+    const priceText = match[4] ? ` <small class="text-muted">(@${match[4]})</small>` : "";
     let stateClass = "serial-chip-available";
     if (remaining <= 0) stateClass = "serial-chip-consumed";
     else if (remaining < initial) stateClass = "serial-chip-partial";
 
-    return `<span class="serial-chip ${stateClass}">${serialNo} <strong>${remaining}/${initial}</strong></span>`;
+    return `<span class="serial-chip ${stateClass}">${serialNo} <strong>${remaining}/${initial}</strong>${priceText}</span>`;
   });
 
   return `<div class="serial-summary-list">${items.join("")}</div>`;
@@ -121,16 +125,16 @@ function renderSparePartsTable(data) {
         tr.id = `row-${p.id}`; // Add unique ID to row
         const serialSummary = renderSerialSummaryHtml(p.serial_summary);
         tr.innerHTML = `
-          <td>${index + 1}</td>
-          <td>${p.id}</td>
-          <td>${escapeHtml(p.name)}</td>
+          <td class="text-center col-no">${index + 1}</td>
+          <td class="text-center col-id">${p.id}</td>
+          <td class="col-name">${escapeHtml(p.name)}</td>
           <td>${escapeHtml(p.part_no)}</td>
-          <td>${escapeHtml(p.description || "")}</td>
-          <td>${p.quantity}</td>
+          <td class="col-desc">${escapeHtml(p.description || "")}</td>
+          <td class="text-center col-qty">${p.quantity}</td>
           <td class="serial-status-cell">${serialSummary}</td>
-          <td class="cell-price">${p.price ?? ""}</td>
-          <td>${escapeHtml(p.warehouse_name || "-")}</td>
-          <td class="actions-cell">
+          <td class="cell-price text-center col-price">${p.price ?? ""}</td>
+          <td class="col-warehouse">${escapeHtml(p.warehouse_name || "-")}</td>
+          <td class="actions-cell text-center">
             <div class="row-actions">
               <button onclick="editPart(${p.id})" class="btn btn-sm btn-primary" data-i18n="edit">Edit</button>
               <button onclick="deletePart(${p.id})" class="btn btn-sm btn-danger" data-i18n="delete">Delete</button>
@@ -428,16 +432,25 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Search Filter
-  const partSearchInput = document.getElementById("part-search");
-  if (partSearchInput) {
-    partSearchInput.addEventListener("input", (e) => {
-      const term = e.target.value.toLowerCase();
-      const filtered = sparePartsCache.filter(p => 
-        (p.part_no && p.part_no.toLowerCase().includes(term)) ||
-        (p.name && p.name.toLowerCase().includes(term)) ||
-        (p.description && p.description.toLowerCase().includes(term))
-      );
+  // Inventory Table Search Filter
+  const invTableSearchInput = document.getElementById("spareparts-table-search");
+  if (invTableSearchInput) {
+    invTableSearchInput.addEventListener("input", (e) => {
+      const term = e.target.value.toLowerCase().trim();
+      const termClean = term.replace(/\s+/g, "");
+      
+      const clean = (val) => (val || "").toString().toLowerCase().replace(/\s+/g, "");
+
+      const filtered = sparePartsCache.filter(p => {
+        if (!termClean) return true;
+        return (
+          clean(p.part_no).includes(termClean) ||
+          clean(p.name).includes(termClean) ||
+          clean(p.description).includes(termClean) ||
+          clean(p.serial_summary).includes(termClean) ||
+          clean(p.warehouse_name).includes(termClean)
+        );
+      });
       renderSparePartsTable(filtered);
     });
   }

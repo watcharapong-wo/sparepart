@@ -80,6 +80,17 @@ function normalizeUnitType(unitType) {
   return ["M", "PC", "PAC", "BOX", "ROL"].includes(normalized) ? normalized : "PC";
 }
 
+function normalizeRole(role) {
+  const value = String(role || "").trim().toLowerCase().replace(/[_\s]+/g, "-");
+  if (value === "coadmin") return "co-admin";
+  return value;
+}
+
+function canCorrectMovements() {
+  const role = normalizeRole(localStorage.getItem("role") || "");
+  return role === "admin" || role === "co-admin";
+}
+
 function isPackUnitType(unitType) {
   return ["BOX", "PAC"].includes(normalizeUnitType(unitType));
 }
@@ -131,6 +142,7 @@ function renderSelectedPartSummary(part) {
       <div><span class="part-summary-label">Unit Type</span><span>${unitType}</span></div>
       <div><span class="part-summary-label">Stock</span><span>${quantity}</span></div>
       <div><span class="part-summary-label">Piece Stock</span><span>${pieceStock}</span></div>
+      <div><span class="part-summary-label">Unit Price</span><span class="text-primary font-bold">${Number(part.price || 0).toLocaleString()}</span></div>
       <div><span class="part-summary-label">Part Ref</span><span>${partCode}</span></div>
     </div>
   `;
@@ -217,11 +229,16 @@ function setMovementType(type) {
     const targetWhGroup = document.getElementById("target-warehouse-group");
     const dueDateGroup = document.getElementById("due-date-group");
     const dueDateInput = document.getElementById("due-date");
+    const priceGroup = document.getElementById("price-unit-group");
+    const priceInput = document.getElementById("price-unit");
+
     setSectionVisible(serialGroup, false);
     setSectionVisible(inSerialGroup, false);
     setSectionVisible(targetWhGroup, type === "TRANSFER", "flex");
     setSectionVisible(dueDateGroup, type === "BORROW", "flex");
+    setSectionVisible(priceGroup, type === "IN", "flex");
     if (dueDateInput && type !== "BORROW") dueDateInput.value = "";
+    if (priceInput && type !== "IN") priceInput.value = "";
 
     // รีเซ็ตให้เลือก part ใหม่ทุกครั้ง
     updatePieceStockInfo(null);
@@ -236,11 +253,13 @@ document.getElementById("movement-type")?.addEventListener("change", async funct
     const dueDateGroup = document.getElementById("due-date-group");
     const dueDateInput = document.getElementById("due-date");
     const targetWhGroup = document.getElementById("target-warehouse-group");
-  const serialGroup = document.getElementById("serial-selection-group");
-  const inSerialGroup = document.getElementById("in-serials-group");
+    const serialGroup = document.getElementById("serial-selection-group");
+    const inSerialGroup = document.getElementById("in-serials-group");
+    const priceGroup = document.getElementById("price-unit-group");
     
     const isBorrow = this.value === "BORROW";
     const isTransfer = this.value === "TRANSFER";
+    const isIncome = this.value === "IN";
 
   setSectionVisible(serialGroup, false);
   setSectionVisible(inSerialGroup, false);
@@ -253,6 +272,10 @@ document.getElementById("movement-type")?.addEventListener("change", async funct
     if (targetWhGroup) {
       setSectionVisible(targetWhGroup, isTransfer, "flex");
       if (isTransfer) await loadTargetWarehouses();
+    }
+
+    if (priceGroup) {
+      setSectionVisible(priceGroup, isIncome, "flex");
     }
 
     updatePieceStockInfo(null);
@@ -340,6 +363,10 @@ async function fetchSerials(partId) {
       if (inSerialGroup) {
         setSectionVisible(inSerialGroup, true, "block");
         qtyInput.readOnly = true;
+        const priceInput = document.getElementById("price-unit");
+        if (priceInput && part) {
+          priceInput.value = part.price ?? 0;
+        }
         updateInSerialsCount();
       }
       return;
@@ -371,6 +398,23 @@ async function fetchSerials(partId) {
     }
 
     setSectionVisible(serialGroup, true, "block");
+
+    const searchInput = document.getElementById("serial-search");
+    if (searchInput) {
+      searchInput.value = "";
+      if (!searchInput.dataset.initialized) {
+        searchInput.dataset.initialized = "true";
+        searchInput.addEventListener("input", (e) => {
+          const term = e.target.value.toLowerCase().trim().replace(/\s+/g, "");
+          const items = serialList.querySelectorAll("label");
+          items.forEach(label => {
+            const text = label.textContent.toLowerCase().replace(/\s+/g, "");
+            label.style.display = text.includes(term) ? "flex" : "none";
+          });
+        });
+      }
+    }
+
     if (serials && serials.length > 0) {
       serialList.innerHTML = serials.map(s => {
         const initialQty = Number(s.initial_qty) || 1;
@@ -383,7 +427,7 @@ async function fetchSerials(partId) {
           <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-size: 13px; background: var(--bg-main); padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
             <span style="display:flex; align-items:center; gap:6px;">
               <input type="checkbox" name="serial" value="${s.id}" onchange="updateSelectedSerialsCount()">
-              ${s.serial_no}
+              ${s.serial_no} ${s.price ? `<small class="text-muted">(@${s.price})</small>` : ""}
             </span>
             ${qtyBadge}
           </label>
@@ -586,6 +630,15 @@ function getFilteredParts(searchTerm, selectedWarehouse) {
       const partNo = String(part.partType || part.part_no || "").toLowerCase();
       const warehouse = String(part.warehouse_name || "").toLowerCase();
       const description = String(part.description || "").toLowerCase();
+      
+      const cleanTerm = normalizedSearchTerm.replace(/\s+/g, "");
+      const cleanName = name.replace(/\s+/g, "");
+      const cleanPartNo = partNo.replace(/\s+/g, "");
+      const cleanDesc = description.replace(/\s+/g, "");
+
+      // Flexible space-ignoring match
+      if (cleanTerm && (cleanName.includes(cleanTerm) || cleanPartNo.includes(cleanTerm) || cleanDesc.includes(cleanTerm))) return true;
+
       return tokens.every((token) =>
         name.includes(token) ||
         partNo.includes(token) ||
@@ -632,7 +685,8 @@ function getSimilarPartWarning(parts, searchTerm) {
 }
 
 function formatPartOptionLabel(part) {
-  return `${part.name} - ${part.partType || part.part_no}${part.description ? ' - ' + part.description : ''} (In stock: ${part.quantity})`;
+  const priceStr = Number(part.price || 0).toLocaleString();
+  return `${part.name} - ${part.partType || part.part_no}${part.description ? ' - ' + part.description : ''} (In stock: ${part.quantity}, Price: ${priceStr})`;
 }
 
 function setAutocompleteActiveIndex(nextIndex) {
@@ -670,6 +724,8 @@ function resetPartSelectionState() {
   }
   if (sparepartNoInput) sparepartNoInput.value = "";
   if (reasonSelect) reasonSelect.dataset.manualSelection = "false";
+  const priceInput = document.getElementById("price-unit");
+  if (priceInput) priceInput.value = "";
 
   renderSelectedPartSummary(null);
   renderPartSelectionWarning("");
@@ -740,6 +796,7 @@ function renderAutocompleteResults(parts, options = {}) {
         <span class="part-result-chip part-result-chip-unit">Unit: ${escapeHtml(normalizeUnitType(part.unit_type))}</span>
         <span class="part-result-chip part-result-chip-stock part-result-chip-stock-${stockState}">Stock: ${escapeHtml(part.quantity ?? 0)}</span>
         <span class="part-result-chip part-result-chip-piece part-result-chip-piece-${pieceStockState}">Piece: ${escapeHtml(part.piece_stock ?? part.quantity ?? 0)}</span>
+        <span class="part-result-chip part-result-chip-price">Price: ฿${Number(part.price || 0).toLocaleString()}</span>
       </span>
       <span class="part-result-description">${highlightMatches(part.description || "No description", searchTerm)}</span>
     `;
@@ -920,7 +977,7 @@ async function loadMovements() {
     const token = localStorage.getItem("token");
     const tbody = document.getElementById("movements-table")?.getElementsByTagName("tbody")[0];
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="12" class="table-loading-state"><div class="spinner"></div>Loading history...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13" class="table-loading-state"><div class="spinner"></div>${i18nText("loadingHistory", "Loading history...")}</td></tr>`;
 
     allMovements = await fetchData("/report/movements3", token);
     displayMovements(allMovements);
@@ -938,29 +995,52 @@ function displayMovements(data) {
       data.forEach(m => {
         const row = tbody.insertRow();
         row.insertCell(0).textContent = formatDate(m.movement_date);
+        const type = String(m.movement_type || "").toUpperCase();
         const typeCell = row.insertCell(1);
-        const typeClass = m.movement_type === 'OUT' ? 'text-danger' : 
-                          m.movement_type === 'IN' ? 'text-success' : 
+        const typeClass = m.movement_type === 'OUT' ? 'text-danger' :
+                          m.movement_type === 'IN' ? 'text-success' :
                           m.movement_type === 'BORROW' ? 'text-warning' :
                           m.movement_type === 'RETURN' ? 'text-info' : 'text-primary';
-        typeCell.innerHTML = `<span class="${typeClass}">${m.movement_type}</span>`;
-        row.insertCell(2).textContent = m.part_name || "-";
-        row.insertCell(3).textContent = m.partType || m.part_no || "-";
-        row.insertCell(4).textContent = m.quantity;
+        const typeLabelKey = `movement${type.charAt(0) + type.slice(1).toLowerCase()}`;
+        typeCell.innerHTML = `<span class="${typeClass}">${i18nText(typeLabelKey, type)}</span>`;
+        typeCell.className = `movement-type movement-${type.toLowerCase()}`;
+        const revertCell = row.insertCell(2);
+        const isCorrection = Number(m.correction_of || 0) > 0;
+        const hasCorrection = Number(m.has_correction || 0) > 0;
+        const canCorrect = canCorrectMovements() && ["IN", "OUT", "BORROW", "RETURN"].includes(type);
+
+        if (isCorrection) {
+          revertCell.textContent = i18nText("itemReturned", "Returned Item");
+        } else if (hasCorrection) {
+          revertCell.textContent = i18nText("returnedAlready", "Returned Already");
+        } else if (canCorrect) {
+          revertCell.innerHTML = `<button class="btn btn-sm btn-warning" onclick="correctMovement(${m.id})">${i18nText("returnBtn", "Return")}</button>`;
+        } else {
+          revertCell.textContent = "-";
+        }
+
+        row.insertCell(3).textContent = m.part_name || "-";
+        row.insertCell(4).textContent = m.partType || m.part_no || "-";
+        row.insertCell(5).textContent = m.quantity;
         
         // Value Cell
         const totalVal = (m.quantity || 0) * (m.price || 0);
-        row.insertCell(5).textContent = totalVal.toLocaleString();
+        row.insertCell(6).textContent = totalVal.toLocaleString();
 
-        row.insertCell(6).textContent = m.department || "-";
-        row.insertCell(7).textContent = formatDate(m.due_date);
-        row.insertCell(8).textContent = m.receiver || "-";
-        row.insertCell(9).textContent = m.receipt_number || "-";
-        row.insertCell(10).textContent = m.serial_usage || "-";
-        row.insertCell(11).textContent = m.note || "-";
+        row.insertCell(7).textContent = m.department || "-";
+        row.insertCell(8).textContent = formatDate(m.due_date);
+        row.insertCell(9).textContent = m.receiver || "-";
+        row.insertCell(10).textContent = m.receipt_number || "-";
+        row.insertCell(11).textContent = m.serial_usage || "-";
+        const noteCell = row.insertCell(12);
+        if (m.correction_of) {
+          noteCell.textContent = `${m.note || "-"} (Correction of #${m.correction_of})`;
+        } else {
+          noteCell.textContent = m.note || "-";
+        }
       });
     } else {
-        tbody.innerHTML = `<tr><td colspan="12" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>No results found.</p></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="13" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>${i18nText("noData", "No results found.")}</p></td></tr>`;
     }
 }
 
@@ -972,6 +1052,26 @@ function filterMovements(term) {
     });
     displayMovements(filtered);
 }
+
+async function correctMovement(movementId) {
+  const reason = prompt("Correction reason (required):");
+  if (!reason || !String(reason).trim()) {
+    showToast("Correction reason is required", "warning");
+    return;
+  }
+
+  const token = localStorage.getItem("token");
+  try {
+    await postData(`/stock-movements/${movementId}/correct`, { reason: String(reason).trim() }, token);
+    showToast("Correction created successfully", "success");
+    await loadParts();
+    await loadMovements();
+  } catch (err) {
+    showToast("Correction failed: " + err.message, "error");
+  }
+}
+
+window.correctMovement = correctMovement;
 
 document.getElementById("movement-form").addEventListener("submit", async function (e) {
   e.preventDefault();
@@ -993,6 +1093,7 @@ document.getElementById("movement-form").addEventListener("submit", async functi
     const receipt_number = document.getElementById("receipt-number").value;
     const due_date = document.getElementById("due-date").value;
     const note = document.getElementById("note").value;
+    const price = document.getElementById("price-unit").value;
 
     console.log("Form values collected:", { part_id, movement_type, quantity, department });
 
@@ -1080,7 +1181,8 @@ document.getElementById("movement-form").addEventListener("submit", async functi
         note, 
         due_date: movement_type === "BORROW" ? due_date : "",
         serial_ids: selectedSerials,
-        new_serials: newSerials
+        new_serials: newSerials,
+        price: movement_type === "IN" ? price : undefined
     };
 
     if (movement_type === "TRANSFER") {
@@ -1144,6 +1246,13 @@ window.addEventListener("pageshow", (event) => {
   if (event.persisted) {
     initMovementsPage();
   }
+});
+
+// Handle language change re-render
+window.addEventListener('languageChanged', () => {
+    if (allMovements && allMovements.length > 0) {
+        displayMovements(allMovements);
+    }
 });
 
 const exportBtn = document.getElementById("export-movements");

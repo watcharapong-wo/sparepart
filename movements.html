@@ -24,11 +24,11 @@
   <div class="movements-container">
     <div class="top-actions flex-space-between">
       <div data-role-required="admin,co-admin,staff">
-        <button class="btn btn-success" onclick="setMovementType('IN')" data-role-required="admin,co-admin">Stock IN</button>
-        <button class="btn btn-danger" onclick="setMovementType('OUT')">Stock OUT</button>
-        <button class="btn btn-warning" onclick="setMovementType('BORROW')">Borrow</button>
-        <button class="btn btn-info" onclick="setMovementType('RETURN')">Return</button>
-        <button class="btn btn-transfer" onclick="setMovementType('TRANSFER')" data-role-required="admin,co-admin">Transfer</button>
+        <button class="btn btn-success" onclick="setMovementType('IN')" data-role-required="admin,co-admin" data-i18n="stockIn">Stock IN</button>
+        <button class="btn btn-danger" onclick="setMovementType('OUT')" data-i18n="stockOut">Stock OUT</button>
+        <button class="btn btn-warning" onclick="setMovementType('BORROW')" data-i18n="borrow">Borrow</button>
+        <button class="btn btn-info" onclick="setMovementType('RETURN')" data-i18n="return">Return</button>
+        <button class="btn btn-transfer" onclick="setMovementType('TRANSFER')" data-role-required="admin,co-admin" data-i18n="transfer">Transfer</button>
       </div>
       <button id="export-movements" class="btn btn-success" data-i18n="exportCSV">Export CSV</button>
     </div>
@@ -102,7 +102,10 @@
 
           <!-- Full Width Sections -->
           <div id="serial-selection-group" class="serial-area-v2 full-span" hidden>
-            <label data-i18n="selectSerials" class="section-label">Select Individual SP No: (<span id="selected-count">0</span> selected)</label>
+            <div class="flex-space-between margin-bottom-8">
+              <label data-i18n="selectSerials" class="section-label no-margin">Select Individual SP No: (<span id="selected-count">0</span> selected)</label>
+              <input type="text" id="serial-search" placeholder="Search SP no..." class="serial-search-input-small" title="Search SP No">
+            </div>
             <div id="serial-list" class="serial-grid-v2"></div>
             <div id="serial-warning" class="serial-warning" hidden>No available SP no for this part.</div>
           </div>
@@ -124,6 +127,11 @@
           <div class="stacked-form-group">
             <label data-i18n="receiptNumber" for="receipt-number">Request Number</label>
             <input type="text" id="receipt-number" required placeholder="Request number" title="Request Number">
+          </div>
+          
+          <div class="stacked-form-group" id="price-unit-group" hidden>
+            <label data-i18n="price" for="price-unit">Price/Unit</label>
+            <input type="number" id="price-unit" step="0.01" min="0" placeholder="Enter price" title="Price per unit">
           </div>
 
           <div class="stacked-form-group" id="conversion-rate-group" hidden>
@@ -157,6 +165,7 @@
           <tr>
             <th data-i18n="date">Date</th>
             <th data-i18n="type">Type</th>
+            <th data-role-required="admin,co-admin" data-i18n="returnStatus">คืนกลับ</th>
             <th data-i18n="partName">Part Name</th>
             <th data-i18n="partType">Part Type</th>
             <th data-i18n="qty">Qty</th>
