@@ -16,3 +16,5 @@ server_error.log
 .vs/
 SQLD/.vs/
 SQLD/backups/
+logs/
+

@@ -12,8 +12,8 @@
     <div class="nav-brand">IT Spare Part System <span>- Stock Movements</span></div>
     <div class="nav-links">
       <a href="dashboard.html" data-i18n="dashboard">Dashboard</a>
-      <a href="movements.html" class="active" data-i18n="movements" onclick="if(window.location.pathname.endsWith('movements.html')){event.preventDefault();initMovementsPage();}">Movements</a>
-      <a href="index.html" data-role-required="admin,co-admin" data-i18n="spareParts">Spare Parts</a>
+      <a href="movements.html" class="active" data-role-required="admin,co-admin,staff" data-i18n="movements" onclick="if(window.location.pathname.endsWith('movements.html')){event.preventDefault();initMovementsPage();}">Movements</a>
+      <a href="index.html" data-role-required="admin,co-admin,staff,viewer" data-i18n="spareParts">Spare Parts</a>
       <a href="users.html" id="nav-users" data-role-required="admin" data-i18n="manageUsers">Manage Users</a>
       <a href="logs.html" data-role-required="admin" data-i18n="activityLogs">Activity Logs</a>
       <span id="user-status"></span>
@@ -48,6 +48,14 @@
               <option value="RETURN" data-i18n="return">RETURN</option>
               <option value="TRANSFER" data-i18n="transfer" data-role-required="admin,co-admin">TRANSFER</option>
             </select>
+          </div>
+
+          <div class="stacked-form-group full-span-field serial-lookup-field">
+            <label for="serial-lookup-input">🔍 Scan/Lookup SP No (Auto-select Part)</label>
+            <div class="lookup-input-row" style="display: flex; gap: 8px; position: relative;">
+              <input type="text" id="serial-lookup-input" placeholder="Scan or enter SP No to identify part..." class="premium-search-input" style="flex: 1;" title="Serial Lookup" autocomplete="off">
+              <div id="serial-lookup-status" class="lookup-status-message" style="position: absolute; bottom: -20px; left: 0; font-size: 11px; font-weight: 600;" hidden></div>
+            </div>
           </div>
           
           <div class="stacked-form-group double-span part-search-field">
@@ -190,8 +198,8 @@
     Hana Microelectronics Public Co., Ltd. | Dev by <span>Watcharapong W.</span> IT Eng.
   </footer>
 
-  <script src="i18n.js?v=1.4"></script>
-  <script src="api.js?v=1.3"></script>
-  <script src="movements.js?v=1.15"></script>
+  <script src="i18n.js?v=2.0"></script>
+  <script src="api.js?v=2.0"></script>
+  <script src="movements.js?v=2.0"></script>
 </body>
 </html>

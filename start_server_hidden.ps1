@@ -1,12 +1,7 @@
 $projectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$nodeExe = "C:\Program Files\nodejs\node.exe"
 $logDir = Join-Path $projectDir "logs"
 $stdoutLog = Join-Path $logDir "server.out.log"
 $stderrLog = Join-Path $logDir "server.err.log"
-
-if (-not (Test-Path $nodeExe)) {
-    throw "Node executable not found: $nodeExe"
-}
 
 if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir | Out-Null
@@ -18,5 +13,6 @@ if ($listener) {
     exit 0
 }
 
-Start-Process -FilePath $nodeExe -ArgumentList "index.js" -WorkingDirectory $projectDir -WindowStyle Hidden -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
-Write-Output "Server start requested in hidden mode."
+# Start node server using global 'node' command
+Start-Process -FilePath "node" -ArgumentList "index.js" -WorkingDirectory $projectDir -WindowStyle Hidden -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+Write-Output "Server start requested in hidden mode (Version 2.3)."

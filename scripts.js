@@ -1,8 +1,6 @@
 // This file now focuses entirely on Spare Parts Management (index.html)
 const _userRole = localStorage.getItem("role");
-if (_userRole === "staff") {
-  window.location.href = "dashboard.html";
-}
+// No redirect for staff here, allow view - UI components handle permissioning instead.
 
 let sparePartsCache = [];
 

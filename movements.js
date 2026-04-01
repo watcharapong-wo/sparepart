@@ -1,3 +1,9 @@
+// Role-based redirect for Movements
+const _currentRole = String(localStorage.getItem("role") || "").toLowerCase().trim().replace(/[_\s]+/g, "-");
+if (_currentRole === "viewer") {
+  window.location.href = "dashboard.html";
+}
+
 function setSectionVisible(element, visible, displayValue = "block") {
   if (!element) return;
   element.hidden = !visible;
@@ -241,6 +247,14 @@ function setMovementType(type) {
     if (priceInput && type !== "IN") priceInput.value = "";
 
     // รีเซ็ตให้เลือก part ใหม่ทุกครั้ง
+    const statusEl = document.getElementById("serial-lookup-status");
+    if (statusEl) {
+      statusEl.textContent = "";
+      statusEl.hidden = true;
+    }
+    const lookupInput = document.getElementById("serial-lookup-input");
+    if (lookupInput) lookupInput.value = "";
+    
     updatePieceStockInfo(null);
 
     if (type === "TRANSFER") loadTargetWarehouses();
@@ -1219,6 +1233,112 @@ document.getElementById("movement-form").addEventListener("submit", async functi
       showToast("Duplicate serial number detected", "error");
     } else {
       showToast("An error occurred: " + err.message, "error");
+    }
+  }
+});
+
+document.getElementById("serial-lookup-input")?.addEventListener("keypress", async function(e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const serialNo = this.value.trim();
+    if (!serialNo) return;
+
+    const statusEl = document.getElementById("serial-lookup-status");
+    if (statusEl) {
+      statusEl.textContent = i18nText("searching", "Searching...");
+      statusEl.style.color = "#64748b";
+      statusEl.hidden = false;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const partData = await fetchData(`/api/lookup/serial/${encodeURIComponent(serialNo)}`, token);
+      
+      if (partData && partData.part_id) {
+        const matchedPart = cachedParts.find(p => Number(p.id) === Number(partData.part_id));
+        if (matchedPart) {
+          selectPart(matchedPart);
+          
+          // Sync the main search input so it shows the found part
+          const mainSearchInput = document.getElementById("part-search-input");
+          if (mainSearchInput) {
+            mainSearchInput.value = formatSelectedPartSearchValue(matchedPart);
+          }
+          
+          // If in Stock IN mode, automatically add this serial to the IN list
+          const type = document.getElementById("movement-type")?.value;
+          if (type === "IN") {
+            const inSerialsArea = document.getElementById("in-serials");
+            if (inSerialsArea) {
+              const currentVal = inSerialsArea.value.trim();
+              const serials = currentVal ? currentVal.split("\n") : [];
+              if (!serials.includes(serialNo)) {
+                serials.push(serialNo);
+                inSerialsArea.value = serials.join("\n");
+                inSerialsArea.dispatchEvent(new Event("input"));
+              }
+            }
+          }
+
+          if (statusEl) {
+            statusEl.textContent = `✓ Found: ${matchedPart.name}`;
+            statusEl.style.color = "#16a34a";
+          }
+          
+          // Auto-focus quantity field for immediate entry
+          setTimeout(() => {
+            const qtyInput = document.getElementById("quantity");
+            if (qtyInput) {
+              qtyInput.focus();
+              qtyInput.select();
+            }
+          }, 100);
+        } else {
+           // Clear status if not found in cache
+           if (statusEl) {
+             statusEl.textContent = `× ${i18nText("notFound", "Not found")}`;
+             statusEl.style.color = "#dc2626";
+           }
+        }
+      } else {
+        throw new Error(i18nText("notFound", "Not found"));
+      }
+    } catch (err) {
+      // Fallback: Local search in cachedParts serial_summary
+      const localMatch = cachedParts.find(p => {
+        const summary = (p.serial_summary || "").toLowerCase();
+        const search = serialNo.toLowerCase();
+        // Check for exact word/line match to avoid partial matches like '123' matching '1123'
+        return summary === search || 
+               summary.startsWith(search + "\n") || 
+               summary.endsWith("\n" + search) || 
+               summary.includes("\n" + search + "\n");
+      });
+
+      if (localMatch) {
+          selectPart(localMatch);
+          const select = document.getElementById("part-select");
+          if (select) {
+            select.dataset.manualSelection = "true";
+            select.dispatchEvent(new Event("change"));
+          }
+          
+          if (statusEl) {
+             statusEl.textContent = `✓ Found (Local): ${localMatch.name}`;
+             statusEl.style.color = "#16a34a";
+          }
+          
+          setTimeout(() => {
+            const qtyInput = document.getElementById("quantity");
+            if (qtyInput) {
+              qtyInput.focus();
+              qtyInput.select();
+            }
+          }, 100);
+      } else if (statusEl) {
+        statusEl.textContent = `× ${err.message || i18nText("notFound", "Not found")}`;
+        statusEl.style.color = "#dc2626";
+      }
     }
   }
 });

@@ -3,9 +3,7 @@ const _userRole = String(localStorage.getItem("role") || "")
   .trim()
   .toLowerCase()
   .replace(/[_\s]+/g, "-");
-if (_userRole === "staff") {
-  window.location.href = "dashboard.html";
-}
+// No redirect for staff here, allow view - UI components handle permissioning instead.
 
 let sparePartsCache = [];
 
@@ -136,8 +134,12 @@ function renderSparePartsTable(data) {
           <td class="col-warehouse">${escapeHtml(p.warehouse_name || "-")}</td>
           <td class="actions-cell text-center">
             <div class="row-actions">
-              <button onclick="editPart(${p.id})" class="btn btn-sm btn-primary" data-i18n="edit">Edit</button>
-              <button onclick="deletePart(${p.id})" class="btn btn-sm btn-danger" data-i18n="delete">Delete</button>
+              ${(_userRole === 'admin' || _userRole === 'co-admin') ? `
+                <button onclick="editPart(${p.id})" class="btn btn-sm btn-primary" data-i18n="edit">Edit</button>
+                <button onclick="deletePart(${p.id})" class="btn btn-sm btn-danger" data-i18n="delete">Delete</button>
+              ` : `
+                <span class="text-muted" style="font-size: 11px;">-</span>
+              `}
             </div>
           </td>
         `;

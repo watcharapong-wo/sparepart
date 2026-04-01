@@ -142,7 +142,11 @@ const translations = {
     noLowStockRisk: "No low stock risk",
     noOverdueItems: "No overdue items",
     never: "Never",
-    noDeadStock: "No dead stock"
+    noDeadStock: "No dead stock",
+    quickLookup: "Quick Serial Lookup",
+    lookup: "Check",
+    searching: "Searching...",
+    notFound: "Not found"
   },
   th: {
     dashboard: "แผงควบคุม",
@@ -288,7 +292,11 @@ const translations = {
     noLowStockRisk: "ไม่มีความเสี่ยงสต็อกต่ำ",
     noOverdueItems: "ไม่มีรายการค้างคืน",
     never: "ไม่เคย",
-    noDeadStock: "ไม่มีอะไหล่ค้างคลัง"
+    noDeadStock: "ไม่มีอะไหล่ค้างคลัง",
+    quickLookup: "ตรวจสอบข้อมูล SP no ด่วน",
+    lookup: "ตรวจสอบ",
+    searching: "กำลังค้นหา...",
+    notFound: "ไม่พบข้อมูล"
   }
 };
 

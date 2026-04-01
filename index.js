@@ -31,6 +31,10 @@ const { createDatabase } = require("./db/adapter");
 const sqlDialect = require("./db/dialect");
 
 const app = express();
+
+// ABSOLUTE TOP: Diagnostic Route
+app.get("/public-ping", (req, res) => res.json({ message: "pong (absolute top)", version: "2.3" }));
+// ----------------------------
 const PORT = Number(process.env.PORT || 5000);
 const NODE_ENV = String(process.env.NODE_ENV || "development").toLowerCase();
 const IS_PRODUCTION = NODE_ENV === "production";
@@ -99,6 +103,41 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("FATAL: Unhandled Rejection at:", promise, "reason:", reason);
 });
 
+// --- Utilities & Middleware (Moved up for priority) ---
+
+function normalizeRole(role) {
+  const value = String(role || "").trim().toLowerCase().replace(/[_\s]+/g, "-");
+  if (value === "coadmin") return "co-admin";
+  return value;
+}
+
+function authenticateToken(req, res, next) {
+  const token = req.header("Authorization")?.replace("Bearer ", "");
+  if (!token) return res.status(401).json({ error: "Access denied" });
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: "Invalid token" });
+    if (user && typeof user === "object") {
+      user.role = normalizeRole(user.role);
+    }
+    req.user = user;
+    next();
+  });
+}
+
+function requireRole(roles = []) {
+  return (req, res, next) => {
+    const userRole = normalizeRole(req.user?.role);
+    const allowedRoles = roles.map(normalizeRole);
+    if (!userRole) return res.status(401).json({ error: "NO_ROLE" });
+    if (!allowedRoles.includes(userRole)) return res.status(403).json({ error: "FORBIDDEN" });
+    next();
+  };
+}
+
+const db = createDatabase(); // Initialize DB early
+// --------------------------------------------------
+
 // ---------------------------
 
 app.get("/test", (req, res) => {
@@ -133,7 +172,7 @@ app.get("/favicon.ico", (req, res) => {
   res.status(204).end();
 });
 
-// Log all requests
+// Log all requests (Moved to top for visibility)
 app.use((req, res, next) => {
   const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   req.requestId = requestId;
@@ -141,6 +180,10 @@ app.use((req, res, next) => {
   console.log(`[${requestId}] ${new Date().toLocaleTimeString()} - ${req.method} ${req.url}`);
   next();
 });
+
+// ---------------------------
+// (Removed redundant public-ping)
+// ---------------------------
 
 // ใช้ Middleware
 app.use(helmet({
@@ -164,15 +207,7 @@ app.use(rateLimit({
 
 app.use(express.json());
 
-// --- Static File Serving ---
-app.use(express.static(__dirname));
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html")); // กลับไปชี้ที่ index.html ตามโค้ดดั้งเดิม
-});
 // ---------------------------
-
-// เปิดฐานข้อมูลผ่าน adapter (SQLite default, fallback during MSSQL migration phase)
-const db = createDatabase();
 
 // สร้างตารางอะไหล่, ผู้ใช้, และคลัง
 db.run(
@@ -550,36 +585,6 @@ function seedData() {
       });
     }
   });
-}
-
-function authenticateToken(req, res, next) {
-  const token = req.header("Authorization")?.replace("Bearer ", "");
-  if (!token) return res.status(401).json({ error: "Access denied" });
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: "Invalid token" });
-    if (user && typeof user === "object") {
-      user.role = normalizeRole(user.role);
-    }
-    req.user = user;
-    next();
-  });
-}
-
-function normalizeRole(role) {
-  const value = String(role || "").trim().toLowerCase().replace(/[_\s]+/g, "-");
-  if (value === "coadmin") return "co-admin";
-  return value;
-}
-
-function requireRole(roles = []) {
-  return (req, res, next) => {
-    const userRole = normalizeRole(req.user?.role);
-    const allowedRoles = roles.map(normalizeRole);
-    if (!userRole) return res.status(401).json({ error: "NO_ROLE" });
-    if (!allowedRoles.includes(userRole)) return res.status(403).json({ error: "FORBIDDEN" });
-    next();
-  };
 }
 
 // API Register
@@ -2217,6 +2222,37 @@ app.get("/export/movements", authenticateToken, (req, res) => {
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", "attachment; filename=movements.csv");
     res.send(csvContent);
+  });
+});
+
+// --- Static File Serving ---
+app.use(express.static(__dirname));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+
+
+app.get("/ping", (req, res) => res.json({ message: "pong", version: "2.2" }));
+
+app.get("/api/lookup/serial/:serialNo", authenticateToken, (req, res) => {
+  const serialNo = String(req.params.serialNo || "").trim();
+  if (!serialNo) return res.status(400).json({ error: "Serial number required" });
+  
+  const sql = `
+    SELECT spi.serial_no, spi.status, spi.remaining_qty, spi.initial_qty, spi.last_used_at,
+           p.id as part_id, p.name as part_name, p.part_no, p.description, p.unit_type, p.price,
+           w.name as warehouse_name
+    FROM spare_part_items spi
+    JOIN spare_parts p ON spi.part_id = p.id
+    LEFT JOIN warehouses w ON p.warehouseId = w.id
+    WHERE UPPER(spi.serial_no) LIKE '%' || UPPER(?)
+  `;
+
+  db.get(sql, [serialNo], (err, row) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!row) return res.status(404).json({ error: "Serial number not found" });
+    res.json(row);
   });
 });
 

@@ -14,8 +14,8 @@
     <div class="nav-brand">IT Spare Part System <span data-i18n="dashboard">- Dashboard</span></div>
     <div class="nav-links">
       <a href="dashboard.html" class="active" data-i18n="dashboard">Dashboard</a>
-      <a href="movements.html" data-i18n="movements">Movements</a>
-      <a href="index.html" data-role-required="admin,co-admin" data-i18n="spareParts">Spare Parts</a>
+      <a href="movements.html" data-role-required="admin,co-admin,staff" data-i18n="movements">Movements</a>
+      <a href="index.html" data-role-required="admin,co-admin,staff,viewer" data-i18n="spareParts">Spare Parts</a>
       <a href="users.html" id="nav-users" data-role-required="admin" data-i18n="manageUsers">Manage Users</a>
       <a href="logs.html" data-role-required="admin" data-i18n="activityLogs">Activity Logs</a>
       <span id="user-status"></span>
@@ -56,28 +56,28 @@
           <div class="stat-value danger" id="low-stock">0</div>
         </div>
       </div>
-      <div class="stat-item premium">
+      <div class="stat-item premium" data-role-required="admin,co-admin,staff">
         <div class="stat-icon stat-icon-green">📤</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="totalStockOuts">Total Stock Outs</div>
           <div class="stat-value success" id="stock-out">0</div>
         </div>
       </div>
-      <div class="stat-item premium">
+      <div class="stat-item premium" data-role-required="admin,co-admin,staff">
         <div class="stat-icon stat-icon-violet">🕒</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="recentMovements">Recent Movements</div>
           <div class="stat-value" id="recent-movements-count">0</div>
         </div>
       </div>
-      <div class="stat-item premium">
+      <div class="stat-item premium" data-role-required="admin,co-admin,staff">
         <div class="stat-icon stat-icon-blue">💵</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="lpn1TotalValue">Inventory Expense</div>
           <div class="stat-value currency" id="total-expense">0</div>
         </div>
       </div>
-      <div class="stat-item premium">
+      <div class="stat-item premium" data-role-required="admin,co-admin,staff">
         <div class="stat-icon stat-icon-green">📦</div>
         <div class="stat-info">
           <div class="stat-title" data-i18n="lpn1TotalOut">Units Withdrawn</div>
@@ -88,7 +88,7 @@
 
     <div class="dashboard-grid premium">
       <!-- Movement Trends -->
-      <div class="card full-width">
+      <div class="card full-width" data-role-required="admin,co-admin,staff">
         <div class="card-title" data-i18n="movementTrends">Movement Trends (Last 7 Days)</div>
         <div class="chart-container chart-container-sm">
           <canvas id="trend-chart"></canvas>
@@ -96,7 +96,7 @@
       </div>
 
       <!-- Monthly Comparison -->
-      <div class="card full-width">
+      <div class="card full-width" data-role-required="admin,co-admin,staff">
         <div class="card-title" data-i18n="monthlyStockComparison">Monthly Stock Comparison (IN vs OUT)</div>
         <div class="chart-container chart-container-md">
           <canvas id="monthly-chart"></canvas>
@@ -112,7 +112,7 @@
       </div>
 
       <!-- Withdrawals by Account -->
-      <div class="card full-width">
+      <div class="card full-width" data-role-required="admin,co-admin,staff">
         <div class="card-title" data-i18n="withdrawalsByAccount">Withdrawals by Account</div>
         <div class="chart-container chart-container-lg chart-padded">
           <canvas id="account-chart"></canvas>
@@ -120,7 +120,7 @@
       </div>
 
       <!-- Recent Movements Table -->
-      <div class="card full-width">
+      <div class="card full-width" data-role-required="admin,co-admin,staff">
         <div class="card-title" data-i18n="recentMovementsHistory">Recent Movements History</div>
         <div class="table-responsive">
           <table id="recent-movements">
