@@ -103,23 +103,73 @@
         </div>
       </div>
 
-      <!-- Warehouse Distribution -->
-      <div class="card full-width">
-        <div class="card-title" data-i18n="stockValueByWarehouse">Stock Value by Warehouse</div>
-        <div class="chart-container chart-container-md chart-centered">
-          <canvas id="warehouse-chart"></canvas>
+      <!-- Quick Stats & Reports -->
+    <section class="stats-row">
+      <div class="chart-card usage-chart">
+        <h3 class="card-title" data-i18n="monthlyUsageChart">Monthly Usage Trend (OUT / Borrow)</h3>
+        <div class="chart-container" style="position: relative; height:200px; width:100%">
+          <canvas id="usageChart"></canvas>
+        </div>
+      </div>
+      
+      <div class="stats-grouped-column">
+        <div class="stat-card summary">
+          <div class="stat-main">
+            <span class="stat-value" id="total-parts">0</span>
+            <span class="stat-label" data-i18n="totalItems">Total Items</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-sub">
+            <span class="stat-sub-value highlight" id="low-stock-count">0</span>
+            <span class="stat-sub-label" data-i18n="lowStockItems">Low Stock</span>
+          </div>
+        </div>
+
+        <div class="mini-report-card">
+          <h4 class="mini-title" data-i18n="topPartsConsumed">Top Consumed Items</h4>
+          <div id="popular-parts-mini-list">
+            <!-- Popular parts rows -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Detailed Insights Grid -->
+    <section class="insights-row">
+      <div class="insight-card">
+        <h3 class="card-title"><i class="fas fa-exclamation-triangle"></i> <span data-i18n="lowStockWatch">Low Stock Watch</span></h3>
+        <div class="table-container mini">
+          <table id="low-stock-table">
+            <thead>
+              <tr>
+                <th data-i18n="name">Name</th>
+                <th data-i18n="quantity">Qty</th>
+                <th data-i18n="warehouse">Warehouse</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
 
-      <!-- Withdrawals by Account -->
-      <div class="card full-width" data-role-required="admin,co-admin,staff">
-        <div class="card-title" data-i18n="withdrawalsByAccount">Withdrawals by Account</div>
-        <div class="chart-container chart-container-lg chart-padded">
-          <canvas id="account-chart"></canvas>
+      <div class="insight-card full">
+        <h3 class="card-title"><i class="fas fa-boxes"></i> <span data-i18n="inventoryByWarehouse">Warehouse Inventory Summary</span></h3>
+        <div class="table-container">
+          <table id="warehouse-inventory-table">
+            <thead>
+              <tr>
+                <th data-i18n="warehouse">Warehouse</th>
+                <th data-i18n="totalItems">Items</th>
+                <th data-i18n="totalValue">Value</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
+    </section>
 
-      <!-- Recent Movements Table -->
+    <!-- Navigation Row -->
       <div class="card full-width" data-role-required="admin,co-admin,staff">
         <div class="card-title" data-i18n="recentMovementsHistory">Recent Movements History</div>
         <div class="table-responsive">
@@ -190,22 +240,23 @@
             </table>
           </div>
         </div>
-        <div class="insight-column">
-          <h4 class="insight-title insight-title-danger" data-i18n="deadStock">Inactive Stock</h4>
-          <div class="table-responsive">
-            <table id="dead-stock-table">
-              <thead>
-                <tr>
-                  <th data-i18n="partType">Part Type</th>
-                  <th data-i18n="name">Name</th>
-                  <th data-i18n="stockValue">Value</th>
-                  <th data-i18n="lastMovement">Last Movement</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
+        <div class="card full-width">
+        <div class="card-title text-danger" style="color: #dc2626 !important;"><i class="fas fa-clock-rotate-left"></i> <span data-i18n="deadStock">Inactive Stock (No movement > 180 days)</span></div>
+        <div class="table-responsive">
+          <table class="table" id="dead-stock-table">
+            <thead>
+              <tr>
+                <th data-i18n="partType">Part Type</th>
+                <th data-i18n="name">Name Device</th>
+                <th data-i18n="quantity">Quantity</th>
+                <th data-i18n="deadStockValue">Value</th>
+                <th data-i18n="lastMovement">Last Movement</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
+      </div>
       </div>
     </div>
 

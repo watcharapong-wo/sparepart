@@ -131,6 +131,9 @@ async function loadDashboard() {
       const elOut = document.getElementById("total-out");
       if (elExp) elExp.innerText = totalExp.toLocaleString();
       if (elOut) elOut.innerText = totalQty.toLocaleString();
+
+      // NEW: Load high-level stats and usage charts
+      loadParts();
     }
   } catch (err) {
     console.error("Dashboard error:", err);
@@ -364,36 +367,122 @@ function renderAccountChart(data, warehouseId) {
   loadInsights(warehouseId || document.getElementById("warehouse-filter")?.value || 'all');
 }
 
+let parts = [];
+let chartInstance = null;
+
+async function loadMonthlyUsage() {
+  const ctx = document.getElementById('usageChart');
+  if (!ctx) return;
+
+  try {
+    const token = localStorage.getItem("token");
+    const data = await fetchData("/report/monthly-usage", token);
+    
+    if (chartInstance) chartInstance.destroy();
+
+    const labels = (data || []).map(row => row.month);
+    const values = (data || []).map(row => row.total);
+
+    chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Total Qty Moving Out',
+          data: values,
+          backgroundColor: '#3b82f6',
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: { beginAtZero: true, grid: { display: false } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  } catch (err) {
+    console.error("Failed to load chart data:", err);
+  }
+}
+
+async function loadParts() {
+  try {
+    const token = localStorage.getItem("token");
+    const data = await fetchData("/spareparts", token);
+    parts = Array.isArray(data) ? data : [];
+    
+    // Update Stats
+    document.getElementById("total-parts").textContent = parts.length;
+    const lowStock = parts.filter(p => Number(p.quantity) <= 5).length;
+    document.getElementById("low-stock-count").textContent = lowStock;
+
+    displayParts(parts);
+    renderWarehouseInventoryTable(parts); // Ensure this is called with parts data
+    await loadMonthlyUsage();
+  } catch (err) {
+    console.error("Failed to load parts", err);
+  }
+}
+
+function renderWarehouseInventoryTable(parts) {
+  const tableBody = document.querySelector("#warehouse-inventory-table tbody");
+  if (!tableBody) return;
+
+  if (!parts || parts.length === 0) {
+    tableBody.innerHTML = `<tr><td colspan="3" class="text-center">${i18nText("noData", "No items")}</td></tr>`;
+    return;
+  }
+
+  const summary = {};
+  parts.forEach(p => {
+    const wh = p.warehouse_name || "Unassigned";
+    if (!summary[wh]) summary[wh] = { count: 0, value: 0 };
+    summary[wh].count++;
+    summary[wh].value += (Number(p.quantity) * Number(p.price || 0));
+  });
+
+  tableBody.innerHTML = Object.entries(summary).map(([wh, data]) => `
+    <tr>
+      <td><strong>${wh}</strong></td>
+      <td>${data.count} ${i18nText("pieces", "items")}</td>
+      <td>฿${data.value.toLocaleString()}</td>
+    </tr>
+  `).join("");
+}
+
 async function loadInsights(warehouseId) {
   const token = localStorage.getItem("token");
   const data = await fetchData(`/report/insights?warehouseId=${warehouseId}`, token);
   
   if (data) {
-    // Render Popular Parts
-    const popularTable = document.querySelector("#popular-parts-table tbody");
-    if (popularTable) {
-      popularTable.innerHTML = (data.popular || []).map((p, i) => `
-        <tr>
-          <td>${i + 1}</td>
-          <td>${p.partType || p.part_no} - ${p.name}</td>
-          <td class="text-success">${p.total_consumed}</td>
-        </tr>
+    // Render Popular Parts Mini List
+    const popularMiniList = document.getElementById("popular-parts-mini-list");
+    if (popularMiniList) {
+      popularMiniList.innerHTML = (data.popular || []).slice(0, 5).map(p => `
+        <div class="mini-row">
+          <span>${p.name} <small class="text-muted">(${p.partType || p.part_no})</small></span>
+          <span class="mini-qty">${p.total_consumed} issued</span>
+        </div>
       `).join("");
-      if (!data.popular || data.popular.length === 0) popularTable.innerHTML = `<tr><td colspan="3" class="text-center">${i18nText("noData", "No data")}</td></tr>`;
     }
 
     const lowStockTable = document.querySelector("#low-stock-table tbody");
     if (lowStockTable) {
       lowStockTable.innerHTML = (data.lowStock || []).map((p) => `
         <tr>
-          <td>${escapeHtml(p.partType || p.part_no || '-')} - ${escapeHtml(p.name || '-')}</td>
-          <td class="text-warning">${escapeHtml(p.quantity)}</td>
+          <td>${escapeHtml(p.name || '-')}</td>
+          <td class="text-danger"><strong>${p.quantity}</strong></td>
           <td>${escapeHtml(p.warehouse_name || '-')}</td>
         </tr>
       `).join("");
-      if (!data.lowStock || data.lowStock.length === 0) lowStockTable.innerHTML = `<tr><td colspan="3" class="text-center">${i18nText("noLowStockRisk", "No low stock risk")}</td></tr>`;
     }
-
+    // Render Overdue Items
     const overdueTable = document.querySelector("#overdue-insights-table tbody");
     if (overdueTable) {
       overdueTable.innerHTML = (data.overdue || []).map((item) => `
@@ -413,14 +502,17 @@ async function loadInsights(warehouseId) {
         <tr>
           <td>${p.partType || p.part_no}</td>
           <td>${p.name}</td>
+          <td><strong>${p.quantity ?? 0}</strong></td>
           <td>${Number(p.stock_value || 0).toLocaleString()}</td>
           <td class="text-danger">${p.last_movement ? new Date(p.last_movement).toLocaleDateString(currentLang === 'th' ? 'th-TH' : 'en-US') : i18nText("never", "Never")}</td>
         </tr>
       `).join("");
-      if (!data.deadStock || data.deadStock.length === 0) deadTable.innerHTML = `<tr><td colspan="4" class="text-center">${i18nText("noDeadStock", "No dead stock")}</td></tr>`;
+      if (!data.deadStock || data.deadStock.length === 0) deadTable.innerHTML = `<tr><td colspan="5" class="text-center">${i18nText("noDeadStock", "No dead stock")}</td></tr>`;
     }
+
   }
 }
+
 
 async function exportInventory() {
   const token = localStorage.getItem("token");

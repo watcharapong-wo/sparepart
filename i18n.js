@@ -146,7 +146,12 @@ const translations = {
     quickLookup: "Quick Serial Lookup",
     lookup: "Check",
     searching: "Searching...",
-    notFound: "Not found"
+    notFound: "Not found",
+    monthlyUsageChart: "Monthly Usage Trend (OUT / Borrow)",
+    totalItems: "Total Spare Parts",
+    lowStockItems: "Critical Low Stock Items",
+    totalValue: "Total Value",
+    dashboardTitle: "Dashboard & Analytics"
   },
   th: {
     dashboard: "แผงควบคุม",
@@ -296,7 +301,12 @@ const translations = {
     quickLookup: "ตรวจสอบข้อมูล SP no ด่วน",
     lookup: "ตรวจสอบ",
     searching: "กำลังค้นหา...",
-    notFound: "ไม่พบข้อมูล"
+    notFound: "ไม่พบข้อมูล",
+    monthlyUsageChart: "แนวโน้มการเบิกจ่ายรายเดือน (ออก/ยืม)",
+    totalItems: "รายการอะไหล่ทั้งหมด",
+    lowStockItems: "อะไหล่ที่สต็อกต่ำ",
+    dashboardTitle: "สรุปข้อมูลผลการดำเนินงาน"
+
   }
 };
 

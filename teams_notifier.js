@@ -1,7 +1,7 @@
 const https = require('https');
 const url = require('url');
 
-const SUPPORTED_NOTIFICATION_TYPES = new Set(["OUT", "BORROW", "RETURN", "TRANSFER", "REMINDER"]);
+const SUPPORTED_NOTIFICATION_TYPES = new Set(["IN", "OUT", "BORROW", "RETURN", "TRANSFER", "REMINDER", "LOW_STOCK"]);
 
 function normalizeNotificationType(type) {
   return String(type || '').trim().toUpperCase();

@@ -1565,6 +1565,24 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
               note: note || "-"
             });
 
+            // Trigger Low Stock Alert if quantity <= 3 after removal
+            if (movement_type === "OUT" || movement_type === "BORROW" || movement_type === "TRANSFER") {
+              db.get("SELECT quantity, name, warehouseId FROM spare_parts WHERE id = ?", [part_id], (err, current) => {
+                if (!err && current && current.quantity <= 3) {
+                  db.get("SELECT name FROM warehouses WHERE id = ?", [current.warehouseId], (wErr, wh) => {
+                    sendTeamsNotification({
+                      type: "LOW_STOCK",
+                      partName: current.name,
+                      quantity: current.quantity,
+                      user: "System (Stock Level Auto-Check)",
+                      warehouse: wh ? wh.name : "-",
+                      note: `Attention: Stock is critically low (${current.quantity} units remaining)`
+                    });
+                  });
+                }
+              });
+            }
+
             logActivity(userId, `MOVEMENT_${movement_type}`, `Part ID ${part_id}: ${requestedQty} units`);
             res.status(201).json({ message: "Success", movementId, requestId: reqId });
           });
@@ -2224,6 +2242,22 @@ app.get("/export/movements", authenticateToken, (req, res) => {
     res.send(csvContent);
   });
 });
+
+app.get("/report/monthly-usage", authenticateToken, (req, res) => {
+  const sql = `
+    SELECT strftime('%Y-%m', movement_date) as month, SUM(quantity) as total 
+    FROM stock_movements 
+    WHERE movement_type IN ('OUT', 'BORROW') 
+    GROUP BY month 
+    ORDER BY month ASC
+    LIMIT 12
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
 
 // --- Static File Serving ---
 app.use(express.static(__dirname));
