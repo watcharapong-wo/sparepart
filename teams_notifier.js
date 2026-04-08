@@ -16,55 +16,29 @@ function asText(value, fallback = '-') {
   return trimmed || fallback;
 }
 
-function buildNotificationContent({ type, titleText, partName, quantity, warehouse, user, receiver, department, sourceWarehouse, destinationWarehouse, serialNos, note, timestamp }) {
-  const actionConfig = {
-    OUT: {
-      summaryLabel: 'Issued',
-      actorLabel: 'Issued By',
-      targetLabel: 'Issued To'
-    },
-    BORROW: {
-      summaryLabel: 'Borrowed',
-      actorLabel: 'Handled By',
-      targetLabel: 'Borrower'
-    },
-    RETURN: {
-      summaryLabel: 'Returned',
-      actorLabel: 'Received By',
-      targetLabel: 'Returned By'
-    },
-    TRANSFER: {
-      summaryLabel: 'Transferred',
-      actorLabel: 'Transferred By',
-      targetLabel: 'Destination'
-    }
-  }[type] || {
-    summaryLabel: 'Moved',
-    actorLabel: 'User',
-    targetLabel: 'Receiver'
-  };
-
+function buildNotificationContent({ type, titleText, partName, quantity, warehouse, user, receiver, department, sourceWarehouse, destinationWarehouse, serialNos, requestNumber, note, timestamp }) {
   const summary = type === 'TRANSFER'
     ? `${titleText} | ${partName} | ${sourceWarehouse} -> ${destinationWarehouse} | Qty ${quantity}`
-    : `${titleText} | ${actionConfig.summaryLabel}: ${partName} | Qty ${quantity}`;
+    : `${titleText} | ${partName} | Qty ${quantity}`;
   const lines = [
     titleText,
     '',
     `Part: ${partName}`,
-    `Quantity: ${quantity}`
+    `Qty: ${quantity}`
   ];
 
   if (type === 'TRANSFER') {
     lines.push(`From Warehouse: ${sourceWarehouse}`);
     lines.push(`To Warehouse: ${destinationWarehouse}`);
-    lines.push(`${actionConfig.actorLabel}: ${user}`);
+    lines.push(`By: ${user}`);
   } else {
     lines.push(`Warehouse: ${warehouse}`);
-    lines.push(`${actionConfig.actorLabel}: ${user}`);
-    lines.push(`${actionConfig.targetLabel}: ${receiver}`);
-    lines.push(`Department: ${department}`);
+    lines.push(`By: ${user}`);
+    lines.push(`Receiver: ${receiver}`);
+    lines.push(`Dept: ${department}`);
   }
 
+  lines.push(`Request No: ${requestNumber}`);
   lines.push(`SP No: ${serialNos}`);
   lines.push(`Note: ${note}`);
   lines.push(`Time: ${timestamp}`);
@@ -90,7 +64,7 @@ function buildNotificationContent({ type, titleText, partName, quantity, warehou
  * @param {string} params.serialNos - List of serial numbers (SP no)
  * @param {string} params.note - Additional note
  */
-function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, department, warehouse, sourceWarehouse, destinationWarehouse, serialNos, spNo, note }) {
+function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, department, warehouse, sourceWarehouse, destinationWarehouse, serialNos, spNo, requestNumber, note }) {
   const normalizedType = normalizeNotificationType(type);
   if (!isSupportedNotificationType(normalizedType)) {
     console.log(`[TEAMS] Skip notification for type: ${type}`);
@@ -137,6 +111,7 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
     sourceWarehouse: asText(sourceWarehouse),
     destinationWarehouse: asText(destinationWarehouse),
     serialNos: asText(serialValue),
+    requestNumber: asText(requestNumber),
     note: asText(note),
     timestamp: asText(timestamp)
   };
@@ -162,6 +137,7 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
         sourceWarehouse: payloadFields.sourceWarehouse,
         destinationWarehouse: payloadFields.destinationWarehouse,
         serialNos: payloadFields.serialNos,
+        requestNumber: payloadFields.requestNumber,
         note: payloadFields.note,
         timestamp: payloadFields.timestamp
       }
@@ -190,6 +166,7 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
                     { title: "By:", value: payloadFields.user },
                     { title: "Receiver:", value: payloadFields.receiver },
                     { title: "Dept:", value: payloadFields.department },
+                    { title: "Request No:", value: payloadFields.requestNumber },
                     { title: "SP No:", value: payloadFields.serialNos },
                     { title: "Note:", value: payloadFields.note },
                     { title: "Time:", value: payloadFields.timestamp }

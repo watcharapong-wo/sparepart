@@ -212,7 +212,8 @@ async function saveInlineEdit(id) {
     showToast(translations[currentLang].saveSuccess || "Saved successfully", "success");
     loadSpareParts();
   } catch (err) {
-    showToast(translations[currentLang].saveError || "Error saving", "error");
+    const msg = err.message || translations[currentLang].saveError || "Error saving";
+    showToast(msg, "error");
   }
 }
 

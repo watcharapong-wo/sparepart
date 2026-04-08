@@ -445,6 +445,7 @@ function fetchSerialSummaryMap(partIds, callback) {
   const sql = `SELECT part_id, serial_no, initial_qty, remaining_qty, status, price, id
                FROM spare_part_items
                WHERE part_id IN (${placeholders})
+                 AND status NOT IN ('consumed', 'removed')
                ORDER BY part_id, CASE WHEN status = 'partial' THEN 0 ELSE 1 END, id ASC`;
 
   db.all(sql, partIds, (err, rows) => {
@@ -1113,17 +1114,17 @@ app.put("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin"])
       const itemInitialQty = isPackUnit(unitType) ? Math.round(convRate) : 1;
 
       db.all(
-        `SELECT spi.id, spi.serial_no, spi.initial_qty, spi.remaining_qty,
-                CASE WHEN mi.id IS NULL THEN 0 ELSE 1 END AS has_movement
+        `SELECT spi.id, spi.serial_no, spi.initial_qty, spi.remaining_qty, spi.status,
+                CASE WHEN EXISTS(SELECT 1 FROM movement_items mi WHERE mi.item_id = spi.id) THEN 1 ELSE 0 END AS has_movement
          FROM spare_part_items spi
-         LEFT JOIN movement_items mi ON mi.item_id = spi.id
          WHERE spi.part_id = ?
          ORDER BY spi.id DESC`,
         [id],
         (itemsErr, itemRows) => {
           if (itemsErr) return res.status(500).json({ error: itemsErr.message });
 
-          const currentItemCount = (itemRows || []).length;
+          const activeItems = (itemRows || []).filter((r) => r.status !== "consumed" && r.status !== "removed");
+          const currentItemCount = activeItems.length;
           const delta = nextQuantity - currentItemCount;
           const pieceStock = Math.round(nextQuantity * convRate);
 
@@ -1220,35 +1221,39 @@ app.put("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin"])
               }
 
               const totalToRemove = Math.abs(delta);
-              const removable = (itemRows || []).filter((r) => {
+
+              // Prefer hard-deleting items with no movement history (safe to delete)
+              const deletable = activeItems.filter((r) => {
                 const untouched = Number(r.remaining_qty) >= Number(r.initial_qty || 1);
                 return Number(r.has_movement) === 0 && untouched;
               });
+              // Items with movement history cannot be deleted; soft-remove them instead
+              const softRemovable = activeItems.filter((r) => Number(r.has_movement) === 1);
 
-              if (removable.length < totalToRemove) {
-                db.run("ROLLBACK");
-                return res.status(409).json({
-                  error: "Cannot reduce quantity to this value because some SP no have movement history."
-                });
-              }
+              const deleteIds = deletable.slice(0, totalToRemove).map((r) => r.id);
+              const softRemoveIds = softRemovable.slice(0, Math.max(0, totalToRemove - deleteIds.length)).map((r) => r.id);
 
-              const removeIds = removable.slice(0, totalToRemove).map((r) => r.id);
-              let removed = 0;
+              let step = 0;
 
               const removeNext = () => {
-                if (removed >= removeIds.length) {
-                  runPartUpdate();
+                if (step < deleteIds.length) {
+                  db.run("DELETE FROM spare_part_items WHERE id = ?", [deleteIds[step]], (deleteErr) => {
+                    if (deleteErr) { db.run("ROLLBACK"); return res.status(500).json({ error: deleteErr.message }); }
+                    step += 1;
+                    removeNext();
+                  });
                   return;
                 }
-
-                db.run("DELETE FROM spare_part_items WHERE id = ?", [removeIds[removed]], (deleteErr) => {
-                  if (deleteErr) {
-                    db.run("ROLLBACK");
-                    return res.status(500).json({ error: deleteErr.message });
-                  }
-                  removed += 1;
-                  removeNext();
-                });
+                const softIdx = step - deleteIds.length;
+                if (softIdx < softRemoveIds.length) {
+                  db.run("UPDATE spare_part_items SET status = 'removed', remaining_qty = 0 WHERE id = ?", [softRemoveIds[softIdx]], (updateErr) => {
+                    if (updateErr) { db.run("ROLLBACK"); return res.status(500).json({ error: updateErr.message }); }
+                    step += 1;
+                    removeNext();
+                  });
+                  return;
+                }
+                runPartUpdate();
               };
 
               removeNext();
@@ -1562,6 +1567,7 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
               department: department || "-",
               warehouse: partMeta.warehouse_name || "-",
               serialNos: touchedSerialNos.length > 0 ? touchedSerialNos.join(", ") : "-",
+              requestNumber: receipt_number || "-",
               note: note || "-"
             });
 

@@ -11,7 +11,12 @@ function escapeHtml(value) {
 
 function formatDate(isoString) {
   if (!isoString) return "-";
-  const d = new Date(isoString);
+  // SQLite CURRENT_TIMESTAMP returns UTC as 'YYYY-MM-DD HH:MM:SS' (no timezone marker).
+  // Append 'Z' so JS correctly parses it as UTC and converts to local time.
+  const normalized = typeof isoString === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(isoString)
+    ? isoString.replace(' ', 'T') + 'Z'
+    : isoString;
+  const d = new Date(normalized);
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const year = d.getFullYear();
