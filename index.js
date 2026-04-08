@@ -1715,16 +1715,24 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
           if (movement_type === "IN") {
             return callback(Number(price) || Number(partMeta.price || 0));
           }
+          const applyPackRate = (boxPrice) => {
+            // For pack units (BOX/PAC) on OUT/BORROW/RETURN, quantity is in pieces/M.
+            // Store price per piece so that value = quantity × price is correct.
+            if (usesPackUnit && convInt > 1) {
+              return Math.round((Number(boxPrice) / convInt) * 10000) / 10000;
+            }
+            return Number(boxPrice);
+          };
           if (selectedSerialIds.length > 0) {
             const placeholders = selectedSerialIds.map(() => "?").join(",");
             db.get(`SELECT AVG(price) as avg_price FROM spare_part_items WHERE id IN (${placeholders})`, selectedSerialIds, (err, row) => {
               if (err || !row || row.avg_price === null) {
-                return callback(Number(partMeta.price || 0));
+                return callback(applyPackRate(partMeta.price || 0));
               }
-              callback(Number(row.avg_price));
+              callback(applyPackRate(row.avg_price));
             });
           } else {
-            callback(Number(partMeta.price || 0));
+            callback(applyPackRate(partMeta.price || 0));
           }
         };
 

@@ -151,7 +151,16 @@ const translations = {
     totalItems: "Total Spare Parts",
     lowStockItems: "Critical Low Stock Items",
     totalValue: "Total Value",
-    dashboardTitle: "Dashboard & Analytics"
+    dashboardTitle: "Dashboard & Analytics",
+    labelDescription: "Description",
+    labelWarehouse: "Warehouse",
+    labelUnitType: "Unit Type",
+    labelStock: "Stock",
+    labelPieceStock: "Piece Stock",
+    labelUnitPrice: "Unit Price",
+    labelPartRef: "Part Ref",
+    scanLookupLabel: "🔍 Scan/Lookup SP No (Auto-select Part)",
+    scanLookupPlaceholder: "Scan or enter SP No to identify part..."
   },
   th: {
     dashboard: "แผงควบคุม",
@@ -305,7 +314,16 @@ const translations = {
     monthlyUsageChart: "แนวโน้มการเบิกจ่ายรายเดือน (ออก/ยืม)",
     totalItems: "รายการอะไหล่ทั้งหมด",
     lowStockItems: "อะไหล่ที่สต็อกต่ำ",
-    dashboardTitle: "สรุปข้อมูลผลการดำเนินงาน"
+    dashboardTitle: "สรุปข้อมูลผลการดำเนินงาน",
+    labelDescription: "รายละเอียด",
+    labelWarehouse: "คลังสินค้า",
+    labelUnitType: "หน่วยนับ",
+    labelStock: "จำนวนคงเหลือ",
+    labelPieceStock: "จำนวนชิ้น",
+    labelUnitPrice: "ราคาต่อหน่วย",
+    labelPartRef: "รหัสอ้างอิง",
+    scanLookupLabel: "🔍 สแกน/ค้นหา SP No (เลือก Part อัตโนมัติ)",
+    scanLookupPlaceholder: "สแกนหรือพิมพ์ SP No เพื่อระบุอะไหล่..."
 
   }
 };
@@ -322,36 +340,40 @@ function toggleLanguage() {
 }
 
 function applyTranslations() {
-  const elements = document.querySelectorAll('[data-i18n]');
   const t = translations[currentLang];
-  
-  elements.forEach(el => {
+
+  document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
-    if (t[key]) {
-      if (el.tagName === 'INPUT' && el.hasAttribute('placeholder')) {
-        el.setAttribute('placeholder', t[key]);
-      } else if (el.tagName === 'OPTION' || el.tagName === 'BUTTON' && !el.querySelector('span')) {
-        el.textContent = t[key];
-      } else {
-        let hasTextNode = false;
-        for (let child of el.childNodes) {
-          if (child.nodeType === Node.TEXT_NODE && child.textContent.trim() !== '') {
-            child.textContent = t[key] + (el.querySelector('span') ? ' ' : '');
-            hasTextNode = true;
-            break;
-          }
+    if (!t[key]) return;
+    if (el.tagName === 'INPUT' && el.hasAttribute('placeholder')) {
+      el.setAttribute('placeholder', t[key]);
+    } else if (el.tagName === 'OPTION' || el.tagName === 'BUTTON' && !el.querySelector('span')) {
+      el.textContent = t[key];
+    } else {
+      let hasTextNode = false;
+      for (let child of el.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE && child.textContent.trim() !== '') {
+          child.textContent = t[key] + (el.querySelector('span') ? ' ' : '');
+          hasTextNode = true;
+          break;
         }
-        if (!hasTextNode) {
-          if (el.children.length === 0) el.textContent = t[key];
-          else {
-            const spanHtml = el.innerHTML.match(/<span.*<\/span>/i);
-            if(spanHtml) el.innerHTML = t[key] + ' ' + spanHtml[0];
-            else el.textContent = t[key];
-          }
+      }
+      if (!hasTextNode) {
+        if (el.children.length === 0) el.textContent = t[key];
+        else {
+          const spanHtml = el.innerHTML.match(/<span.*<\/span>/i);
+          if(spanHtml) el.innerHTML = t[key] + ' ' + spanHtml[0];
+          else el.textContent = t[key];
         }
       }
     }
   });
+
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (t[key]) el.setAttribute('placeholder', t[key]);
+  });
+
   displayUserStatus();
 }
 

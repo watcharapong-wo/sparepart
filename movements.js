@@ -137,19 +137,20 @@ function renderSelectedPartSummary(part) {
   const quantity = escapeHtml(part.quantity ?? 0);
   const pieceStock = escapeHtml(part.piece_stock ?? part.quantity ?? 0);
 
+  const t = translations[currentLang] || translations.en;
   summary.innerHTML = `
     <div class="part-summary-header">
       <strong>${escapeHtml(part.name || "-")}</strong>
       <span class="part-summary-badge">${partCode}</span>
     </div>
     <div class="part-summary-grid">
-      <div><span class="part-summary-label">Description</span><span>${description}</span></div>
-      <div><span class="part-summary-label">Warehouse</span><span>${warehouseName}</span></div>
-      <div><span class="part-summary-label">Unit Type</span><span>${unitType}</span></div>
-      <div><span class="part-summary-label">Stock</span><span>${quantity}</span></div>
-      <div><span class="part-summary-label">Piece Stock</span><span>${pieceStock}</span></div>
-      <div><span class="part-summary-label">Unit Price</span><span class="text-primary font-bold">${Number(part.price || 0).toLocaleString()}</span></div>
-      <div><span class="part-summary-label">Part Ref</span><span>${partCode}</span></div>
+      <div><span class="part-summary-label">${t.labelDescription || "Description"}</span><span>${description}</span></div>
+      <div><span class="part-summary-label">${t.labelWarehouse || "Warehouse"}</span><span>${warehouseName}</span></div>
+      <div><span class="part-summary-label">${t.labelUnitType || "Unit Type"}</span><span>${unitType}</span></div>
+      <div><span class="part-summary-label">${t.labelStock || "Stock"}</span><span>${quantity}</span></div>
+      <div><span class="part-summary-label">${t.labelPieceStock || "Piece Stock"}</span><span>${pieceStock}</span></div>
+      <div><span class="part-summary-label">${t.labelUnitPrice || "Unit Price"}</span><span class="text-primary font-bold">${Number(part.price || 0).toLocaleString()}</span></div>
+      <div><span class="part-summary-label">${t.labelPartRef || "Part Ref"}</span><span>${partCode}</span></div>
     </div>
   `;
   summary.hidden = false;
@@ -335,6 +336,7 @@ document.getElementById("part-select")?.addEventListener("change", function(even
   syncWarehouseByPart(part || null);
     // อัปเดต unit-type, conversion-rate และ piece-stock info จาก part ที่เลือก
     if (part) {
+      currentSelectedPart = part;
       const unitTypeEl = document.getElementById("unit-type");
       const convRateEl = document.getElementById("conversion-rate");
       if (unitTypeEl) unitTypeEl.value = normalizeUnitType(part.unit_type);
@@ -342,6 +344,7 @@ document.getElementById("part-select")?.addEventListener("change", function(even
       updatePieceStockInfo(part);
       renderSelectedPartSummary(part);
     } else {
+      currentSelectedPart = null;
       updatePieceStockInfo(null);
       renderSelectedPartSummary(null);
     }
@@ -438,11 +441,10 @@ async function fetchSerials(partId) {
           : "";
 
         return `
-          <label style="display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; font-size: 13px; background: var(--bg-main); padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
-            <span style="display:flex; align-items:center; gap:6px;">
-              <input type="checkbox" name="serial" value="${s.id}" onchange="updateSelectedSerialsCount()">
-              ${s.serial_no} ${s.price ? `<small class="text-muted">(@${s.price})</small>` : ""}
-            </span>
+          <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; white-space: nowrap; background: var(--bg-main); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <input type="checkbox" name="serial" value="${s.id}" onchange="updateSelectedSerialsCount()">
+            <span>${s.serial_no}</span>
+            ${s.price ? `<small class="text-muted">(@${s.price})</small>` : ""}
             ${qtyBadge}
           </label>
         `;
@@ -542,6 +544,7 @@ document.getElementById("movement-type")?.addEventListener("change", function() 
 
 let allMovements = [];
 let cachedParts = [];
+let currentSelectedPart = null;
 const MAX_VISIBLE_PART_RESULTS = 6;
 let filteredPartResults = [];
 let activeAutocompleteIndex = -1;
@@ -741,6 +744,7 @@ function resetPartSelectionState() {
     partSelect.dataset.selectionSource = "";
     partSelect.dataset.manualSelection = "false";
   }
+  currentSelectedPart = null;
   if (sparepartNoInput) sparepartNoInput.value = "";
   if (reasonSelect) reasonSelect.dataset.manualSelection = "false";
   const priceInput = document.getElementById("price-unit");
@@ -769,6 +773,7 @@ function selectPart(part, options = {}) {
   select.dataset.selectionSource = "autocomplete";
   select.value = String(part.id);
   select.dataset.manualSelection = "true";
+  currentSelectedPart = part;
   if (updateSearchInput && searchInput) searchInput.value = formatSelectedPartSearchValue(part);
   select.dispatchEvent(new Event("change"));
   if (!preserveDropdown) closePartAutocomplete();
@@ -1377,6 +1382,13 @@ window.addEventListener("pageshow", (event) => {
 window.addEventListener('languageChanged', () => {
     if (allMovements && allMovements.length > 0) {
         displayMovements(allMovements);
+    }
+    // Re-render part summary card and quantity label in current language
+    if (currentSelectedPart) {
+        renderSelectedPartSummary(currentSelectedPart);
+        updatePieceStockInfo(currentSelectedPart);
+    } else {
+        updatePieceStockInfo(null);
     }
 });
 
