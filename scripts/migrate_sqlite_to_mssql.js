@@ -123,8 +123,22 @@ async function main() {
         if (skipped > 0) {
           console.warn(`Skipping ${skipped} orphan row(s) in spare_part_items due to missing spare_parts reference`);
         }
-        await insertRows(pool, tableName, filteredRows);
-        sourceSparePartItemIds = new Set(filteredRows.map((row) => Number(row.id)).filter((id) => Number.isFinite(id)));
+        // Deduplicate by serial_no, keeping the row with the highest id
+        const serialMap = new Map();
+        for (const row of filteredRows) {
+          const key = String(row.serial_no || "").trim().toLowerCase();
+          if (!key) continue;
+          if (!serialMap.has(key) || Number(row.id) > Number(serialMap.get(key).id)) {
+            serialMap.set(key, row);
+          }
+        }
+        const deduped = Array.from(serialMap.values());
+        const dupSkipped = filteredRows.length - deduped.length;
+        if (dupSkipped > 0) {
+          console.warn(`Skipping ${dupSkipped} duplicate serial_no row(s) in spare_part_items`);
+        }
+        await insertRows(pool, tableName, deduped);
+        sourceSparePartItemIds = new Set(deduped.map((row) => Number(row.id)).filter((id) => Number.isFinite(id)));
         continue;
       }
 

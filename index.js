@@ -766,11 +766,11 @@ app.get("/report/movement-trends", authenticateToken, (req, res) => {
 
 app.get("/report/monthly-comparison", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT ${sqlDialect.monthKey("m.movement_date")} as month, m.movement_type, SUM(m.quantity) as total_qty FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_date >= ${sqlDialect.dateDaysAgo(180)}`;
+  let sql = `SELECT ${sqlDialect.monthKey("m.movement_date")} as month, m.movement_type, SUM(m.quantity) as total_qty, SUM(m.quantity * COALESCE(m.price, p.price, 0)) as total_value FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id WHERE m.movement_date >= ${sqlDialect.dateDaysAgo(180)}`;
   const params = [];
   if (warehouseId && warehouseId !== 'all') { sql += " AND p.warehouseId = ?"; params.push(warehouseId); }
   sql += ` GROUP BY ${sqlDialect.monthKey("m.movement_date")}, m.movement_type`;
-  db.all(sql, params, (err, rows) => res.json(rows));
+  db.all(sql, params, (err, rows) => res.json(rows || []));
 });
 
 app.get("/report/withdraw-by-account", authenticateToken, (req, res) => {
@@ -803,13 +803,17 @@ app.get("/report/overdue", authenticateToken, (req, res) => {
 
 app.get("/report/insights", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  const popularSql = `SELECT p.part_no, p.name, SUM(m.quantity) as total_consumed
+  const popularSql = `SELECT p.part_no, p.name,
+                             COALESCE(p.description, '') AS description,
+                             p.price,
+                             SUM(m.quantity) AS total_consumed,
+                             SUM(m.quantity * COALESCE(m.price, p.price, 0)) AS total_value
                       FROM stock_movements m
                       JOIN spare_parts p ON m.part_id = p.id
                       WHERE m.movement_type IN ('OUT', 'BORROW') ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''}
-                      GROUP BY p.id, p.part_no, p.name
+                      GROUP BY p.id, p.part_no, p.name, p.description
                       ORDER BY total_consumed DESC ${sqlDialect.limit(5)}`;
-  const lowStockSql = `SELECT p.part_no, p.name, p.quantity, w.name AS warehouse_name
+  const lowStockSql = `SELECT p.part_no, p.name, p.quantity, p.price, w.name AS warehouse_name
                        FROM spare_parts p
                        LEFT JOIN warehouses w ON p.warehouseId = w.id
                        WHERE p.quantity > 0 AND p.quantity < 10 ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''}
@@ -1101,7 +1105,7 @@ app.put("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin"])
   }
 
   const nextQuantity = Math.max(0, Number(quantity) || 0);
-
+  const updatedSerials = Array.isArray(req.body.serials) ? req.body.serials : []; 
   db.get(
     "SELECT id, quantity, unit_type, COALESCE(conversion_rate, 1) AS conversion_rate FROM spare_parts WHERE id = ?",
     [id],
@@ -1128,6 +1132,27 @@ app.put("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin"])
           const delta = nextQuantity - currentItemCount;
           const pieceStock = Math.round(nextQuantity * convRate);
 
+          // Validation Step: Check for duplicate serials globally
+          const validateSerials = async () => {
+            if (updatedSerials.length === 0) return;
+            for (const item of updatedSerials) {
+              if (!item.id || !item.serial_no) continue;
+              const newSn = String(item.serial_no).trim();
+              const existing = await new Promise((resolve, reject) => {
+                db.get(
+                  "SELECT spi.serial_no, p.name FROM spare_part_items spi JOIN spare_parts p ON spi.part_id = p.id WHERE spi.serial_no = ? AND spi.id != ?",
+                  [newSn, item.id],
+                  (err, row) => (err ? reject(err) : resolve(row))
+                );
+              });
+              if (existing) {
+                const err = new Error(`Serial ${newSn} already exists in part "${existing.name}"`);
+                err.status = 409;
+                throw err;
+              }
+            }
+          };
+
           const runPartUpdate = () => {
             const sql = `UPDATE spare_parts
                          SET part_no = ?, name = ?, description = ?, quantity = ?, piece_stock = ?, price = ?
@@ -1137,134 +1162,136 @@ app.put("/spareparts/:id", authenticateToken, requireRole(["admin", "co-admin"])
                 db.run("ROLLBACK");
                 return res.status(500).json({ error: updateErr.message });
               }
-              if (this.changes === 0) {
-                db.run("ROLLBACK");
-                return res.status(404).json({ error: "Part not found" });
-              }
-
               db.run("COMMIT");
               logActivity(req.user.userId, "UPDATE_SPARE_PART", `Updated part ID ${id} (${part_no}) qty=${nextQuantity}`);
               res.json({ message: "Spare part updated" });
             });
           };
 
-          db.serialize(() => {
-            db.run("BEGIN TRANSACTION");
+          const proceedQuantitySync = () => {
+            if (delta === 0) {
+              runPartUpdate();
+              return;
+            }
 
-            const autoRows = (itemRows || []).filter((r) => String(r.serial_no || "").startsWith("AUTO-"));
-            const nonAutoRows = (itemRows || []).filter((r) => !String(r.serial_no || "").startsWith("AUTO-"));
-
-            const normalizeAutoSerials = (done) => {
-              if (autoRows.length === 0) {
-                done();
-                return;
-              }
-
-              const generateSerialNo = createSerialGenerator(nonAutoRows, part_no);
-              let idx = 0;
-
-              const renameNext = () => {
-                if (idx >= autoRows.length) {
-                  done();
-                  return;
-                }
-
-                const row = autoRows[idx];
-                const nextSerial = generateSerialNo();
-                db.run("UPDATE spare_part_items SET serial_no = ? WHERE id = ?", [nextSerial, row.id], (renameErr) => {
-                  if (renameErr) {
-                    db.run("ROLLBACK");
-                    return res.status(500).json({ error: renameErr.message });
+            if (delta > 0) {
+              const totalToAdd = delta;
+              let added = 0;
+              const generateSerialNo = createSerialGenerator(itemRows, part_no);
+              const insertNext = () => {
+                if (added >= totalToAdd) { runPartUpdate(); return; }
+                const serialNo = generateSerialNo();
+                db.run(
+                  "INSERT INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty, price) VALUES (?, ?, 'available', ?, ?, ?)",
+                  [id, serialNo, itemInitialQty, itemInitialQty, Number(price) || 0],
+                  (err) => {
+                    if (err) { db.run("ROLLBACK"); return res.status(500).json({ error: err.message }); }
+                    added++; insertNext();
                   }
-                  idx += 1;
-                  renameNext();
-                });
+                );
               };
-
-              renameNext();
-            };
-
-            const proceedQuantitySync = () => {
-              if (delta === 0) {
-                runPartUpdate();
-                return;
-              }
-
-              if (delta > 0) {
-                const totalToAdd = delta;
-                let added = 0;
-                const generateSerialNo = createSerialGenerator(itemRows, part_no);
-
-                const insertNext = () => {
-                  if (added >= totalToAdd) {
-                    runPartUpdate();
-                    return;
-                  }
-
-                  const serialNo = generateSerialNo();
-                  db.run(
-                    "INSERT INTO spare_part_items (part_id, serial_no, status, initial_qty, remaining_qty, price) VALUES (?, ?, 'available', ?, ?, ?)",
-                    [id, serialNo, itemInitialQty, itemInitialQty, Number(price) || Number(partMeta.price || 0)],
-                    (insertErr) => {
-                      if (insertErr) {
-                        db.run("ROLLBACK");
-                        return res.status(500).json({ error: insertErr.message });
-                      }
-                      added += 1;
-                      insertNext();
-                    }
-                  );
-                };
-
-                insertNext();
-                return;
-              }
-
+              insertNext();
+            } else {
               const totalToRemove = Math.abs(delta);
-
-              // Prefer hard-deleting items with no movement history (safe to delete)
-              const deletable = activeItems.filter((r) => {
-                const untouched = Number(r.remaining_qty) >= Number(r.initial_qty || 1);
-                return Number(r.has_movement) === 0 && untouched;
-              });
-              // Items with movement history cannot be deleted; soft-remove them instead
+              const deletable = activeItems.filter((r) => Number(r.has_movement) === 0 && Number(r.remaining_qty) >= Number(r.initial_qty || 1));
               const softRemovable = activeItems.filter((r) => Number(r.has_movement) === 1);
-
               const deleteIds = deletable.slice(0, totalToRemove).map((r) => r.id);
               const softRemoveIds = softRemovable.slice(0, Math.max(0, totalToRemove - deleteIds.length)).map((r) => r.id);
-
               let step = 0;
-
               const removeNext = () => {
                 if (step < deleteIds.length) {
-                  db.run("DELETE FROM spare_part_items WHERE id = ?", [deleteIds[step]], (deleteErr) => {
-                    if (deleteErr) { db.run("ROLLBACK"); return res.status(500).json({ error: deleteErr.message }); }
-                    step += 1;
-                    removeNext();
+                  db.run("DELETE FROM spare_part_items WHERE id = ?", [deleteIds[step]], (err) => {
+                    if (err) { db.run("ROLLBACK"); return res.status(500).json({ error: err.message }); }
+                    step++; removeNext();
                   });
                   return;
                 }
                 const softIdx = step - deleteIds.length;
                 if (softIdx < softRemoveIds.length) {
-                  db.run("UPDATE spare_part_items SET status = 'removed', remaining_qty = 0 WHERE id = ?", [softRemoveIds[softIdx]], (updateErr) => {
-                    if (updateErr) { db.run("ROLLBACK"); return res.status(500).json({ error: updateErr.message }); }
-                    step += 1;
-                    removeNext();
+                  db.run("UPDATE spare_part_items SET status = 'removed', remaining_qty = 0 WHERE id = ?", [softRemoveIds[softIdx]], (err) => {
+                    if (err) { db.run("ROLLBACK"); return res.status(500).json({ error: err.message }); }
+                    step++; removeNext();
                   });
                   return;
                 }
                 runPartUpdate();
               };
-
               removeNext();
-            };
+            }
+          };
 
-            normalizeAutoSerials(proceedQuantitySync);
+          const normalizeAutoSerials = (callback) => {
+            const autoRows = (itemRows || []).filter((r) => String(r.serial_no || "").startsWith("AUTO-"));
+            const nonAutoRows = (itemRows || []).filter((r) => !String(r.serial_no || "").startsWith("AUTO-"));
+            if (autoRows.length === 0) return callback();
+
+            const generateSerialNo = createSerialGenerator(nonAutoRows, part_no);
+            let idx = 0;
+            const renameNext = () => {
+              if (idx >= autoRows.length) return callback();
+              const row = autoRows[idx++];
+              db.run("UPDATE spare_part_items SET serial_no = ? WHERE id = ?", [generateSerialNo(), row.id], (err) => {
+                if (err) { db.run("ROLLBACK"); return res.status(500).json({ error: err.message }); }
+                renameNext();
+              });
+            };
+            renameNext();
+          };
+
+          const commitSerialEdits = (callback) => {
+            if (updatedSerials.length === 0) return callback();
+            let idx = 0;
+            const updateNext = () => {
+              if (idx >= updatedSerials.length) return callback();
+              const item = updatedSerials[idx++];
+              if (item.id && item.serial_no) {
+                db.run(
+                  "UPDATE spare_part_items SET serial_no = ? WHERE id = ? AND part_id = ?",
+                  [String(item.serial_no).trim(), item.id, id],
+                  (err) => {
+                    if (err) { db.run("ROLLBACK"); return res.status(500).json({ error: err.message }); }
+                    updateNext();
+                  }
+                );
+              } else {
+                updateNext();
+              }
+            };
+            updateNext();
+          };
+
+          validateSerials().then(() => {
+            db.run("BEGIN TRANSACTION", (err) => {
+              if (err) return res.status(500).json({ error: err.message });
+              commitSerialEdits(() => {
+                normalizeAutoSerials(() => {
+                  proceedQuantitySync();
+                });
+              });
+            });
+          }).catch(err => {
+            console.error("Validation failed:", err);
+            res.status(err.status || 500).json({ error: err.message });
           });
         }
       );
     }
   );
+});
+
+// API สำหรับตรวจสอบหมายเลข SP ซ้ำแบบครอบคลุมทั้งประวัติ
+app.post("/api/verify-serials", authenticateToken, (req, res) => {
+  const { serials } = req.body;
+  if (!Array.isArray(serials) || serials.length === 0) return res.json({ conflicts: [] });
+  
+  // ป้องกัน SQL Injection และรองรับเลขจำนวนมาก
+  const placeholders = serials.map(() => "?").join(",");
+  const sql = `SELECT DISTINCT serial_no FROM spare_part_items WHERE serial_no IN (${placeholders})`;
+  
+  db.all(sql, serials, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ conflicts: rows.map(r => r.serial_no) });
+  });
 });
 
 // API สำหรับลบอะไหล่

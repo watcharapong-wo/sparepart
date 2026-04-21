@@ -153,9 +153,18 @@ function renderSparePartsTable(data) {
   }
 }
 
-function editPart(id) {
+async function editPart(id) {
   const part = sparePartsCache.find((p) => p.id === id);
   if (!part) return;
+
+  // Fetch individual serial items to allow editing
+  let serialItems = [];
+  try {
+    const token = localStorage.getItem("token");
+    serialItems = await fetchData(`/spareparts/${id}/serials`, token);
+  } catch (err) {
+    console.error("Failed to fetch serials for editing:", err);
+  }
 
   const index = sparePartsCache.indexOf(part);
   const tr = document.getElementById(`row-${id}`);
@@ -164,6 +173,18 @@ function editPart(id) {
     return;
   }
   
+  // Create serial inputs
+  const serialInputsHtml = serialItems.map(item => `
+    <div class="serial-edit-item" style="margin-bottom: 4px;">
+      <input type="text" 
+             class="edit-serial-input-${id}" 
+             data-item-id="${item.id}" 
+             value="${escapeHtml(item.serial_no)}" 
+             style="width: 120px; font-size: 11px; padding: 2px 4px;">
+      <small class="text-muted" style="font-size: 10px;">${item.remaining_qty}/${item.initial_qty}</small>
+    </div>
+  `).join("");
+
   // Edit row with input fields (no actions)
   tr.innerHTML = `
     <td>${index + 1}</td>
@@ -172,7 +193,11 @@ function editPart(id) {
     <td><input type="text" id="edit-part_no-${id}" value="${escapeHtml(part.part_no)}" style="width:80px;"></td>
     <td><input type="text" id="edit-desc-${id}" value="${escapeHtml(part.description || "")}" style="width:120px;"></td>
     <td><input type="number" id="edit-qty-${id}" value="${part.quantity}" style="width:50px;"></td>
-    <td class="serial-status-cell">${renderSerialSummaryHtml(part.serial_summary)}</td>
+    <td class="serial-status-cell">
+      <div style="max-height: 100px; overflow-y: auto; border: 1px solid #eee; padding: 4px; border-radius: 4px;">
+        ${serialInputsHtml || '<span class="text-muted">-</span>'}
+      </div>
+    </td>
     <td><input type="number" id="edit-price-${id}" value="${part.price ?? 0}" style="width:70px;"></td>
     <td>${escapeHtml(part.warehouse_name || "-")}</td>
     <td></td>
@@ -200,11 +225,18 @@ async function saveInlineEdit(id) {
   const part_no = document.getElementById(`edit-part_no-${id}`).value;
   const name = document.getElementById(`edit-name-${id}`).value;
   const description = document.getElementById(`edit-desc-${id}`).value;
-  const quantity = parseInt(document.getElementById(`edit-qty-${id}`).value) || 0;
+  const quantity = parseInt(document.getElementById("edit-qty-" + id).value) || 0;
   const priceInput = document.getElementById(`edit-price-${id}`).value;
   const price = priceInput === "" ? 0 : parseFloat(priceInput);
 
-  const updateData = { part_no, name, description, quantity, price };
+  // Collect updated serials
+  const serialInputs = document.querySelectorAll(`.edit-serial-input-${id}`);
+  const serials = Array.from(serialInputs).map(input => ({
+    id: parseInt(input.dataset.itemId),
+    serial_no: input.value.trim()
+  }));
+
+  const updateData = { part_no, name, description, quantity, price, serials };
 
   try {
     const token = localStorage.getItem("token");
@@ -212,6 +244,7 @@ async function saveInlineEdit(id) {
     showToast(translations[currentLang].saveSuccess || "Saved successfully", "success");
     loadSpareParts();
   } catch (err) {
+    console.error("Update failed:", err);
     const msg = err.message || translations[currentLang].saveError || "Error saving";
     showToast(msg, "error");
   }
@@ -366,10 +399,12 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.error("Save failed:", err);
       setButtonLoading(this.querySelector('button[type="submit"]'), false);
-      if (err.message && err.message.includes("409")) {
-        showToast(err.message.includes("serial") ? err.message : "Duplicate SP no detected", "error");
+      
+      // Show specific error from server if available (e.g., 409 Conflict for duplicates)
+      if (err.status === 409 || (err.message && err.message.includes("409"))) {
+        showToast(err.message || "Duplicate SP no detected", "error");
       } else {
-        showToast(translations[currentLang].saveError || "Failed to save part", "error");
+        showToast(err.message || translations[currentLang].saveError || "Failed to save part", "error");
       }
     }
   });

@@ -25,12 +25,17 @@ async function fetchData(endpoint, token) {
     const response = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${token}` }
     });
+    const result = await response.json().catch(() => ({}));
+    const requestId = response.headers.get("x-request-id") || result.requestId;
+    handleAuthFailure(response.status);
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      handleAuthFailure(response.status);
-      throw new Error(errorData.error || `Fetch failed: ${response.status}`);
+      const err = new Error(result.error || `Fetch failed: ${response.status}`);
+      err.status = response.status;
+      err.requestId = requestId;
+      if (requestId) err.message = `${err.message} (ref: ${requestId})`;
+      throw err;
     }
-    return response.json();
+    return result;
   } catch (err) {
     console.error(`fetchData error [${endpoint}]:`, err);
     throw err;
@@ -44,8 +49,15 @@ async function deleteData(endpoint, token) {
       headers: { Authorization: `Bearer ${token}` }
     });
     const result = await response.json().catch(() => ({}));
+    const requestId = response.headers.get("x-request-id") || result.requestId;
     handleAuthFailure(response.status);
-    if (!response.ok) throw new Error(result.error || `DELETE failed: ${response.status}`);
+    if (!response.ok) {
+      const err = new Error(result.error || `DELETE failed: ${response.status}`);
+      err.status = response.status;
+      err.requestId = requestId;
+      if (requestId) err.message = `${err.message} (ref: ${requestId})`;
+      throw err;
+    }
     return result;
   } catch (err) {
     console.error(`deleteData error [${endpoint}]:`, err);
@@ -96,8 +108,15 @@ async function putData(endpoint, data, token) {
       body: JSON.stringify(data)
     });
     const result = await response.json().catch(() => ({}));
+    const requestId = response.headers.get("x-request-id") || result.requestId;
     handleAuthFailure(response.status);
-    if (!response.ok) throw new Error(result.error || `PUT failed: ${response.status}`);
+    if (!response.ok) {
+      const err = new Error(result.error || `PUT failed: ${response.status}`);
+      err.status = response.status;
+      err.requestId = requestId;
+      if (requestId) err.message = `${err.message} (ref: ${requestId})`;
+      throw err;
+    }
     return result;
   } catch (err) {
     console.error(`putData error [${endpoint}]:`, err);
@@ -213,13 +232,13 @@ window.showToast = function(message, type = "info") {
   toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
   container.appendChild(toast);
 
-  // Remove after 3 seconds
+  // Remove after 30 seconds (user requested longer visibility)
   setTimeout(() => {
     toast.classList.add("removing");
     toast.addEventListener("animationend", () => {
       if (toast.parentNode) toast.parentNode.removeChild(toast);
     });
-  }, 3000);
+  }, 30000);
 };
 
 /* ============================================

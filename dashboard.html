@@ -95,80 +95,69 @@
         </div>
       </div>
 
-      <!-- Monthly Comparison -->
+      <!-- Monthly Comparison (Qty) -->
       <div class="card full-width" data-role-required="admin,co-admin,staff">
-        <div class="card-title" data-i18n="monthlyStockComparison">Monthly Stock Comparison (IN vs OUT)</div>
+        <div class="card-title" data-i18n="monthlyStockComparison">Monthly Stock Comparison (Quantity)</div>
         <div class="chart-container chart-container-md">
           <canvas id="monthly-chart"></canvas>
         </div>
       </div>
 
-      <!-- Quick Stats & Reports -->
-    <section class="stats-row">
-      <div class="chart-card usage-chart">
-        <h3 class="card-title" data-i18n="monthlyUsageChart">Monthly Usage Trend (OUT / Borrow)</h3>
-        <div class="chart-container" style="position: relative; height:200px; width:100%">
-          <canvas id="usageChart"></canvas>
+      <!-- Monthly Spending (Value) -->
+      <div class="card full-width" data-role-required="admin,co-admin,staff">
+        <div class="card-title" data-i18n="monthlySpending">Monthly Spending Analysis (฿)</div>
+        <div class="chart-container chart-container-md">
+          <canvas id="spending-chart"></canvas>
         </div>
       </div>
-      
-      <div class="stats-grouped-column">
-        <div class="stat-card summary">
-          <div class="stat-main">
-            <span class="stat-value" id="total-parts">0</span>
-            <span class="stat-label" data-i18n="totalItems">Total Items</span>
-          </div>
-          <div class="stat-divider"></div>
-          <div class="stat-sub">
-            <span class="stat-sub-value highlight" id="low-stock-count">0</span>
-            <span class="stat-sub-label" data-i18n="lowStockItems">Low Stock</span>
-          </div>
-        </div>
 
-        <div class="mini-report-card">
-          <h4 class="mini-title" data-i18n="topPartsConsumed">Top Consumed Items</h4>
-          <div id="popular-parts-mini-list">
-            <!-- Popular parts rows -->
+      <!-- Quick Stats & Reports -->
+      <div class="card full-width">
+        <section class="stats-row">
+          <div>
+            <div class="card-title"><i class="fas fa-exclamation-triangle" style="color:var(--warning);"></i> <span data-i18n="lowStockWatch">Low Stock Watch</span></div>
+            <div class="table-responsive" style="max-height:380px; overflow-y:auto;">
+              <table id="low-stock-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="name">Name Device</th>
+                    <th data-i18n="quantity">Qty</th>
+                    <th data-i18n="stockValue">Value</th>
+                    <th data-i18n="warehouse">Warehouse</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          <div class="stats-grouped-column">
+            <div class="stat-card summary">
+              <div class="stat-main">
+                <span class="stat-value" id="total-parts">0</span>
+                <span class="stat-label" data-i18n="totalItems">Total Items</span>
+              </div>
+              <div class="stat-divider"></div>
+              <div class="stat-sub">
+                <span class="stat-sub-value highlight" id="low-stock-count">0</span>
+                <span class="stat-sub-label" data-i18n="lowStockItems">Low Stock</span>
+              </div>
+              <div class="stat-divider"></div>
+              <div class="stat-sub">
+                <span class="stat-sub-value" style="font-size:16px; color:var(--danger);" id="total-consumed-value">0</span>
+                <span class="stat-sub-label" data-i18n="totalConsumedValue">Value Used</span>
+              </div>
+            </div>
+
+            <div>
+              <div class="card-title" data-i18n="topPartsConsumed">Top Consumed Items</div>
+              <div id="popular-parts-mini-list"></div>
+            </div>
+          </div>
+        </section>
       </div>
-    </section>
 
     <!-- Detailed Insights Grid -->
-    <section class="insights-row">
-      <div class="insight-card">
-        <h3 class="card-title"><i class="fas fa-exclamation-triangle"></i> <span data-i18n="lowStockWatch">Low Stock Watch</span></h3>
-        <div class="table-container mini">
-          <table id="low-stock-table">
-            <thead>
-              <tr>
-                <th data-i18n="name">Name</th>
-                <th data-i18n="quantity">Qty</th>
-                <th data-i18n="warehouse">Warehouse</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="insight-card full">
-        <h3 class="card-title"><i class="fas fa-boxes"></i> <span data-i18n="inventoryByWarehouse">Warehouse Inventory Summary</span></h3>
-        <div class="table-container">
-          <table id="warehouse-inventory-table">
-            <thead>
-              <tr>
-                <th data-i18n="warehouse">Warehouse</th>
-                <th data-i18n="totalItems">Items</th>
-                <th data-i18n="totalValue">Value</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
     <!-- Navigation Row -->
       <div class="card full-width" data-role-required="admin,co-admin,staff">
         <div class="card-title" data-i18n="recentMovementsHistory">Recent Movements History</div>
@@ -181,6 +170,7 @@
                 <th data-i18n="part">Part Name</th>
                 <th data-i18n="partType">Part Type</th>
                 <th data-i18n="details">Details</th>
+                <th data-i18n="totalValue">Value</th>
                 <th data-i18n="account">Account</th>
               </tr>
             </thead>
@@ -204,6 +194,7 @@
                   <th data-i18n="no">No</th>
                   <th data-i18n="part">Part Name</th>
                   <th data-i18n="timesConsumed">Units Used</th>
+                  <th data-i18n="totalValue">Value</th>
                 </tr>
               </thead>
               <tbody></tbody>
@@ -213,7 +204,7 @@
         <div class="insight-column">
           <h4 class="insight-title insight-title-warning" data-i18n="lowStockWatch">Low Stock Watch</h4>
           <div class="table-responsive">
-            <table id="low-stock-table">
+            <table id="low-stock-insights-table">
               <thead>
                 <tr>
                   <th data-i18n="partType">Part Type</th>

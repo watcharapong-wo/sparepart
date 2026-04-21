@@ -108,6 +108,7 @@ async function loadDashboard() {
             <td>${escapeHtml(m.part_name || '-')}</td>
             <td>${escapeHtml(m.partType || m.part_no || '-')}</td>
             <td>${escapeHtml(m.note || m.department || m.receiver || '-')}</td>
+            <td style="color:var(--primary); font-weight:600;">฿${(Number(m.quantity || 0) * Number(m.price || 0)).toLocaleString()}</td>
             <td><span class="badge badge-user">${escapeHtml(m.username || '-')}</span></td>
           </tr>
         `).join('');
@@ -118,6 +119,8 @@ async function loadDashboard() {
       if (monthlyData) renderMonthlyChart(monthlyData);
       if (warehouseValue) renderWarehouseChart(warehouseValue);
       if (accountData) renderAccountChart(accountData, warehouseId);
+
+      loadInsights(warehouseId);
 
       // Populate Expense & Out Stats
       let totalExp = 0;
@@ -134,8 +137,10 @@ async function loadDashboard() {
 
       const elExp = document.getElementById("total-expense");
       const elOut = document.getElementById("total-out");
+      const elConsumed = document.getElementById("total-consumed-value");
       if (elExp) elExp.innerText = totalExp.toLocaleString();
       if (elOut) elOut.innerText = totalQty.toLocaleString();
+      if (elConsumed) elConsumed.innerText = "฿" + totalExp.toLocaleString();
 
       // NEW: Load high-level stats and usage charts
       loadParts();
@@ -255,30 +260,56 @@ function renderWarehouseChart(data) {
 }
 
 function renderMonthlyChart(data) {
-  const chartEl = document.getElementById("monthly-chart");
-  if (!chartEl) return;
-  const ctx = chartEl.getContext("2d");
   const months = [...new Set(data.map(d => d.month))].sort();
   
-  const inData = months.map(m => data.find(d => d.month === m && d.movement_type === 'IN')?.total_qty || 0);
-  const outData = months.map(m => data.find(d => d.month === m && d.movement_type === 'OUT')?.total_qty || 0);
+  // 1. Quantity Comparison Chart
+  const ctxQty = document.getElementById('monthly-chart')?.getContext('2d');
+  if (ctxQty) {
+    if (charts.monthly) charts.monthly.destroy();
+    const inData = months.map(m => data.find(d => d.month === m && d.movement_type === 'IN')?.total_qty || 0);
+    const outData = months.map(m => data.find(d => d.month === m && d.movement_type === 'OUT')?.total_qty || 0);
 
-  if (charts.monthly) charts.monthly.destroy();
-  charts.monthly = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: months,
-      datasets: [
-        { label: i18nText("movementIn", "Stock IN"), data: inData, backgroundColor: '#10b981', borderRadius: 4 },
-        { label: i18nText("movementOut", "Stock OUT"), data: outData, backgroundColor: '#ef4444', borderRadius: 4 }
-      ]
-    },
-    options: { 
-      maintainAspectRatio: false, 
-      scales: { y: { beginAtZero: true } },
-      plugins: { legend: { position: 'top' } } 
-    }
-  });
+    charts.monthly = new Chart(ctxQty, {
+      type: 'bar',
+      data: {
+        labels: months,
+        datasets: [
+          { label: i18nText("movementIn", "Stock IN"), data: inData, backgroundColor: '#10b981', borderRadius: 4 },
+          { label: i18nText("movementOut", "Stock OUT"), data: outData, backgroundColor: '#ef4444', borderRadius: 4 }
+        ]
+      },
+      options: { maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+    });
+  }
+
+  // 2. Financial Spending Chart
+  const ctxVal = document.getElementById('spending-chart')?.getContext('2d');
+  if (ctxVal) {
+    if (charts.spending) charts.spending.destroy();
+    const spendingData = months.map(m => {
+      const movements = data.filter(d => d.month === m && ['OUT', 'BORROW'].includes(d.movement_type));
+      return movements.reduce((sum, d) => sum + (Number(d.total_value) || 0), 0);
+    });
+
+    charts.spending = new Chart(ctxVal, {
+      type: 'line',
+      data: {
+        labels: months,
+        datasets: [{ 
+          label: i18nText("monthlySpending", "Monthly Spending"), 
+          data: spendingData, 
+          borderColor: '#f59e0b', 
+          backgroundColor: 'rgba(245, 158, 11, 0.1)', 
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: { 
+        maintainAspectRatio: false, 
+        scales: { y: { beginAtZero: true, ticks: { callback: (v) => '฿' + v.toLocaleString() } } }
+      }
+    });
+  }
 }
 
 console.log("Initializing dashboard...");
@@ -469,23 +500,67 @@ async function loadInsights(warehouseId) {
     // Render Popular Parts Mini List
     const popularMiniList = document.getElementById("popular-parts-mini-list");
     if (popularMiniList) {
-      popularMiniList.innerHTML = (data.popular || []).slice(0, 5).map(p => `
-        <div class="mini-row">
-          <span>${p.name} <small class="text-muted">(${p.partType || p.part_no})</small></span>
-          <span class="mini-qty">${p.total_consumed} issued</span>
-        </div>
-      `).join("");
+      popularMiniList.innerHTML = (data.popular || []).slice(0, 5).map(p => {
+        const value = Number(p.total_value || 0);
+        const valueText = value > 0 ? value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : "-";
+        const unitPrice = Number(p.price || 0);
+        const unitPriceText = unitPrice > 0 ? `฿${unitPrice.toLocaleString()}/unit` : '';
+        return `
+          <div class="mini-row" style="flex-direction:column; align-items:stretch; gap:2px; padding:8px 4px; border-bottom:1px solid var(--border-color);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:600;">${p.name} <small class="text-muted">(${p.partType || p.part_no})</small></span>
+              <span class="mini-qty" style="white-space:nowrap;">${p.total_consumed} ${i18nText("issued", "issued")}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between;">
+              <span style="font-size:11px; color:var(--text-muted);">${unitPriceText}</span>
+              <span style="font-size:11px; color:var(--text-muted);">${i18nText("totalValue", "Total Value")}: <strong style="color:var(--primary);">${valueText}</strong></span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // Render Popular Parts Table
+    const popularTable = document.querySelector("#popular-parts-table tbody");
+    if (popularTable) {
+      popularTable.innerHTML = (data.popular || []).map((p, i) => {
+        const val = Number(p.total_value || 0);
+        return `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${escapeHtml(p.name)} <small class="text-muted">(${p.partType || p.part_no})</small></td>
+          <td><strong>${p.total_consumed}</strong></td>
+          <td style="color:var(--primary); font-weight:600;">฿${val.toLocaleString()}</td>
+        </tr>`;
+      }).join("");
+      if (!data.popular || data.popular.length === 0) popularTable.innerHTML = `<tr><td colspan="4" class="text-center">${i18nText("noData", "No data")}</td></tr>`;
     }
 
     const lowStockTable = document.querySelector("#low-stock-table tbody");
     if (lowStockTable) {
-      lowStockTable.innerHTML = (data.lowStock || []).map((p) => `
+      lowStockTable.innerHTML = (data.lowStock || []).map((p) => {
+        const val = (Number(p.quantity) * Number(p.price || 0));
+        const valText = val > 0 ? `฿${val.toLocaleString()}` : '-';
+        return `
         <tr>
           <td>${escapeHtml(p.name || '-')}</td>
+          <td class="text-danger"><strong>${p.quantity}</strong></td>
+          <td style="color:var(--primary); font-weight:600;">${valText}</td>
+          <td>${escapeHtml(p.warehouse_name || '-')}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    const lowStockInsightsTable = document.querySelector("#low-stock-insights-table tbody");
+    if (lowStockInsightsTable) {
+      lowStockInsightsTable.innerHTML = (data.lowStock || []).map((p) => `
+        <tr>
+          <td>${escapeHtml(p.partType || p.part_no || '-')}</td>
           <td class="text-danger"><strong>${p.quantity}</strong></td>
           <td>${escapeHtml(p.warehouse_name || '-')}</td>
         </tr>
       `).join("");
+      if (!data.lowStock || data.lowStock.length === 0) lowStockInsightsTable.innerHTML = `<tr><td colspan="3" class="text-center">${i18nText("noLowStock", "No low stock items")}</td></tr>`;
     }
     // Render Overdue Items
     const overdueTable = document.querySelector("#overdue-insights-table tbody");

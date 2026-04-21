@@ -148,7 +148,7 @@ function renderSelectedPartSummary(part) {
       <div><span class="part-summary-label">${t.labelWarehouse || "Warehouse"}</span><span>${warehouseName}</span></div>
       <div><span class="part-summary-label">${t.labelUnitType || "Unit Type"}</span><span>${unitType}</span></div>
       <div><span class="part-summary-label">${t.labelStock || "Stock"}</span><span>${quantity}</span></div>
-      <div><span class="part-summary-label">${t.labelPieceStock || "Piece Stock"}</span><span>${pieceStock}</span></div>
+      <div><span class="part-summary-label">${t.labelPieceStock || "Remaining number of units"}</span><span>${pieceStock}</span></div>
       <div><span class="part-summary-label">${t.labelUnitPrice || "Unit Price"}</span><span class="text-primary font-bold">${Number(part.price || 0).toLocaleString()}</span></div>
       <div><span class="part-summary-label">${t.labelPartRef || "Part Ref"}</span><span>${partCode}</span></div>
     </div>
@@ -1047,9 +1047,9 @@ function displayMovements(data) {
         row.insertCell(4).textContent = m.partType || m.part_no || "-";
         row.insertCell(5).textContent = m.quantity;
         
-        // Value Cell
-        const totalVal = (m.quantity || 0) * (m.price || 0);
-        row.insertCell(6).textContent = totalVal.toLocaleString();
+        // Unit Price Used Cell
+        const priceUsed = Number(m.price || 0);
+        row.insertCell(6).textContent = priceUsed > 0 ? priceUsed.toLocaleString() : "-";
 
         row.insertCell(7).textContent = m.department || "-";
         row.insertCell(8).textContent = formatDate(m.due_date);
@@ -1369,7 +1369,62 @@ async function initMovementsPage() {
   if (typeof updateUserStatus === "function") updateUserStatus();
 }
 
+let serialCheckTimeout = null;
+
+function setupRealtimeSerialCheck() {
+  const inSerialsTextarea = document.getElementById("in-serials");
+  const helper = document.getElementById("in-serials-helper");
+  if (!inSerialsTextarea || !helper) return;
+
+  const showStatus = (issues, type) => {
+    if (issues && issues.length > 0) {
+      inSerialsTextarea.style.borderColor = "#ef4444";
+      inSerialsTextarea.style.backgroundColor = "#fff1f2";
+      const label = type === 'internal' ? "Duplicate in list" : (translations[currentLang].duplicateSerialDetected || "Already used in history");
+      helper.innerHTML = `<span style="color:#e11d48; font-weight:600;">⚠️ ${label}: ${[...new Set(issues)].join(", ")}</span>`;
+    } else {
+      inSerialsTextarea.style.borderColor = "#10b981";
+      inSerialsTextarea.style.backgroundColor = "#f0fdf4";
+      helper.innerHTML = `<span style="color:#16a34a; font-weight:600;">✓ ${translations[currentLang].noDuplicates || "Available (Unique)"}</span>`;
+    }
+  };
+
+  inSerialsTextarea.addEventListener("input", function() {
+    clearTimeout(serialCheckTimeout);
+    const lines = this.value.split("\n").map(s => s.trim()).filter(Boolean);
+    
+    if (lines.length === 0) {
+      this.style.borderColor = "";
+      this.style.backgroundColor = "";
+      helper.textContent = i18nText("inSerialsHelper", "Enter one SP no per line.");
+      return;
+    }
+
+    // 1. Immediate local check for internal duplicates
+    const internalDuplicates = lines.filter((item, index) => lines.indexOf(item) !== index);
+    if (internalDuplicates.length > 0) {
+      showStatus(internalDuplicates, 'internal');
+      return;
+    }
+
+    // 2. Debounced remote check for historical duplicates
+    helper.innerHTML = `<span class="text-muted"><div class="spinner-tiny"></div> ${i18nText("searching", "Checking history...")}</span>`;
+    
+    serialCheckTimeout = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const res = await postData("/api/verify-serials", { serials: lines }, token);
+        showStatus(res.conflicts, 'history');
+      } catch (err) {
+        console.error("Historical check failed:", err);
+        helper.textContent = "Validation error occurred";
+      }
+    }, 600);
+  });
+}
+
 initMovementsPage();
+setupRealtimeSerialCheck();
 
 // Refresh เมื่อกลับมาที่หน้านี้ (bfcache)
 window.addEventListener("pageshow", (event) => {

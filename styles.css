@@ -142,9 +142,9 @@
 
 .stats-row {
   display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 20px;
-  margin-bottom: 24px;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  min-height: 420px;
 }
 
 .stats-grouped-column {
@@ -193,20 +193,20 @@
 }
 
 .mini-title {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   color: #475569;
   text-transform: uppercase;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   border-bottom: 1px solid #f1f5f9;
-  padding-bottom: 8px;
+  padding-bottom: 10px;
 }
 
 .mini-row {
   display: flex;
   justify-content: space-between;
-  padding: 8px 0;
-  font-size: 13px;
+  padding: 12px 0;
+  font-size: 15px;
   border-bottom: 1px dashed #f1f5f9;
 }
 
