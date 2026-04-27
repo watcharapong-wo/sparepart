@@ -218,9 +218,101 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
   req.end();
 }
 
+function sendBatchNotification({ type, items, user, receiver, department, warehouse, requestNumber, note, sourceWarehouse, destinationWarehouse }) {
+  const normalizedType = normalizeNotificationType(type);
+  const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
+  if (!webhookUrl) return;
+
+  const isPowerAutomateWebhook = /powerautomate|logic\.azure\.com/i.test(webhookUrl);
+  const typeEmoji = {
+    'IN': '📥', 'OUT': '📤', 'BORROW': '📂', 'RETURN': '🔄', 'TRANSFER': '🔁'
+  }[normalizedType] || '🔔';
+
+  const titleText = `${typeEmoji} Stock Movement (Batch): ${normalizedType}`;
+  const timestamp = new Date().toLocaleString('th-TH');
+
+  // Build items display
+  let itemsAsText = items.map((item, idx) => {
+    const isLow = Number(item.remainingQty) <= 3;
+    const lowWarning = isLow ? ` ⚠️ (LOW STOCK: ${item.remainingQty} rem.)` : "";
+    return `${idx + 1}. [${item.partType || '-'}] ${item.partName} - Qty: ${item.quantity} (${item.serialNos || '-'})${lowWarning}`;
+  }).join('\n');
+
+  const allSerialNos = items
+    .map(it => it.serialNos)
+    .filter(sn => sn && sn !== '-' && sn !== 'undefined')
+    .join(", ");
+
+  const payloadFields = {
+    partName: items.length === 1 
+      ? `[${items[0].partType || '-'}] ${items[0].partName}`
+      : `Multiple Items Request (${items.length} parts)`,
+    quantity: items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0),
+    user: user || 'System',
+    receiver: receiver || '-',
+    department: department || '-',
+    warehouse: warehouse || sourceWarehouse || '-',
+    serialNos: allSerialNos || "-",
+    requestNumber: requestNumber || '-',
+    note: `Items List:\n${itemsAsText}\n\nNote: ${note || '-'}`,
+    timestamp: timestamp
+  };
+
+  const payload = isPowerAutomateWebhook
+    ? {
+        type: normalizedType,
+        eventType: normalizedType,
+        title: titleText,
+        message: `Batch submission by ${user}\nRequest No: ${requestNumber}\n\n${itemsAsText}`,
+        ...payloadFields
+      }
+    : {
+        type: "message",
+        attachments: [{
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: {
+            $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: [
+              { type: "TextBlock", text: titleText, weight: "Bolder", size: "Large", color: "Accent" },
+              { type: "FactSet", facts: [
+                { title: "By:", value: payloadFields.user },
+                { title: "Receiver:", value: payloadFields.receiver },
+                { title: "Request No:", value: payloadFields.requestNumber },
+                { title: "Warehouse:", value: payloadFields.warehouse }
+              ]},
+              { type: "TextBlock", text: "Items Details:", weight: "Bolder", spacing: "Medium" },
+              { type: "TextBlock", text: itemsAsText, wrap: true },
+              { type: "TextBlock", text: `Note: ${note}`, isSubtle: true, spacing: "Medium" },
+              { type: "TextBlock", text: `Time: ${timestamp}`, size: "Small", isSubtle: true }
+            ]
+          }
+        }]
+      };
+
+  const body = JSON.stringify(payload);
+  const parsedUrl = url.parse(webhookUrl);
+  const options = {
+    hostname: parsedUrl.hostname,
+    port: parsedUrl.port || 443,
+    path: parsedUrl.path,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  };
+
+  const req = https.request(options, (res) => {
+    console.log(`[TEAMS] Sent Batch (PA: ${isPowerAutomateWebhook}) status=${res.statusCode}`);
+  });
+  req.on('error', (e) => console.error(`[TEAMS] Error: ${e.message}`));
+  req.write(body);
+  req.end();
+}
+
 module.exports = {
   SUPPORTED_NOTIFICATION_TYPES,
   isSupportedNotificationType,
   normalizeNotificationType,
-  sendTeamsNotification
+  sendTeamsNotification,
+  sendBatchNotification
 };

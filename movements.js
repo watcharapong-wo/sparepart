@@ -113,6 +113,118 @@ function setExistingSerialLookup(serialRows) {
   );
 }
 
+let itemCart = [];
+
+function renderCartTable() {
+    const container = document.getElementById("movement-cart-container");
+    const tbody = document.getElementById("cart-items");
+    const submitAllBtn = document.getElementById("submit-all-btn");
+    
+    if (!container || !tbody || !submitAllBtn) return;
+
+    if (itemCart.length === 0) {
+        container.hidden = true;
+        tbody.innerHTML = "";
+        submitAllBtn.disabled = true;
+        return;
+    }
+
+    container.hidden = false;
+    submitAllBtn.disabled = false;
+    tbody.innerHTML = itemCart.map((item, index) => `
+        <tr class="cart-row">
+            <td>
+                <div class="cart-part-name">${escapeHtml(item.partName)}</div>
+                <div class="cart-part-type text-muted" style="font-size: 0.85em;">${escapeHtml(item.partType)}</div>
+            </td>
+            <td><span class="badge badge-secondary">${item.quantity}</span></td>
+            <td>
+                <div class="cart-serials" style="max-width: 200px; max-height: 50px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8em;" title="${escapeHtml((item.serialNos || []).join(', '))}">
+                    ${(item.serialNos || []).length > 0 ? (item.serialNos || []).join(', ') : '-'}
+                </div>
+            </td>
+            <td>
+                <button type="button" class="btn-delete" onclick="removeItemFromCart(${index})" title="Remove Item">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </td>
+        </tr>
+    `).join("");
+}
+
+window.removeItemFromCart = function(index) {
+    itemCart.splice(index, 1);
+    renderCartTable();
+};
+
+document.getElementById("add-to-cart-btn")?.addEventListener("click", function() {
+    if (!currentSelectedPart) {
+        showToast(i18nText("selectPart", "Please select a part first"), "warning");
+        return;
+    }
+
+    const qtyInput = document.getElementById("quantity");
+    const qty = parseInt(qtyInput.value);
+    if (!qty || qty <= 0) {
+        showToast("Minimum quantity is 1", "warning");
+        return;
+    }
+
+    const movementType = document.getElementById("movement-type").value;
+    const selectedSerials = Array.from(document.querySelectorAll('input[name="serial"]:checked')).map(cb => ({
+        id: parseInt(cb.value),
+        no: cb.parentElement.querySelector('span')?.textContent || cb.value
+    }));
+    
+    const newSerialsRaw = document.getElementById("in-serials")?.value || "";
+    const newSerials = movementType === "IN" ? newSerialsRaw.split("\n").map(s => s.trim()).filter(Boolean) : [];
+
+    const isShowingInSerials = !document.getElementById("in-serials-group")?.hidden;
+    const isShowingStockSerials = !document.getElementById("serial-selection-group")?.hidden;
+    const isPack = isPackUnitType(currentSelectedPart.unit_type);
+
+    // Validation for tracked serials (logic based on UI visibility)
+    if (isShowingInSerials) {
+        if (newSerials.length !== qty) {
+            showToast(`Registered SP No count (${newSerials.length}) must match quantity (${qty}).`, "error");
+            return;
+        }
+    } else if (isShowingStockSerials && !isPack && movementType !== "TRANSFER") {
+        if (selectedSerials.length !== qty) {
+            showToast(`Selected SP No count (${selectedSerials.length}) must match quantity (${qty}).`, "error");
+            return;
+        }
+    }
+
+    itemCart.push({
+        partId: currentSelectedPart.id,
+        partName: currentSelectedPart.name,
+        partType: currentSelectedPart.partType || currentSelectedPart.part_no,
+        type: movementType,
+        quantity: qty,
+        serialIds: selectedSerials.map(s => s.id),
+        newSerials: newSerials,
+        serialNos: movementType === "IN" ? newSerials : selectedSerials.map(s => s.no),
+        price: document.getElementById("price-unit")?.value || null,
+        due_date: document.getElementById("due-date")?.value || null,
+        department: document.getElementById("reason-select")?.value || 'INTERNAL',
+        target_warehouse: document.getElementById("target-warehouse-select")?.value || null
+    });
+
+    const searchInput = document.getElementById("part-search-input");
+    // Reset everything for next item, but keep search text for visual confirmation
+    resetPartSelectionState({ preserveSearchText: true });
+    
+    // Highlight the search input so they see what they added
+    if (searchInput) {
+        searchInput.style.backgroundColor = "#f0fdf4"; // Subtle green
+        setTimeout(() => { searchInput.style.backgroundColor = ""; }, 1500);
+    }
+    
+    renderCartTable();
+    showToast(i18nText("itemAddedToList", "Added item to list"), "success");
+});
+
 function findExistingSerialConflicts(serialLines) {
   return (Array.isArray(serialLines) ? serialLines : [])
     .map((line) => String(line || "").trim())
@@ -416,21 +528,7 @@ async function fetchSerials(partId) {
 
     setSectionVisible(serialGroup, true, "block");
 
-    const searchInput = document.getElementById("serial-search");
-    if (searchInput) {
-      searchInput.value = "";
-      if (!searchInput.dataset.initialized) {
-        searchInput.dataset.initialized = "true";
-        searchInput.addEventListener("input", (e) => {
-          const term = e.target.value.toLowerCase().trim().replace(/\s+/g, "");
-          const items = serialList.querySelectorAll("label");
-          items.forEach(label => {
-            const text = label.textContent.toLowerCase().replace(/\s+/g, "");
-            label.style.display = text.includes(term) ? "flex" : "none";
-          });
-        });
-      }
-    }
+
 
     if (serials && serials.length > 0) {
       serialList.innerHTML = serials.map(s => {
@@ -732,28 +830,57 @@ function closePartAutocomplete() {
   activeAutocompleteIndex = -1;
 }
 
-function resetPartSelectionState() {
+function resetPartSelectionState(options = {}) {
+  const { preserveSearchText = false } = options;
   const partSearchInput = document.getElementById("part-search-input");
   const partSelect = document.getElementById("part-select");
   const sparepartNoInput = document.getElementById("sparepart-no");
   const reasonSelect = document.getElementById("reason-select");
+  const serialLookupInput = document.getElementById("serial-lookup-input");
+  const serialLookupStatus = document.getElementById("serial-lookup-status");
+  const serialSelectionGroup = document.getElementById("serial-selection-group");
+  const inSerialsGroup = document.getElementById("in-serials-group");
+  const serialList = document.getElementById("serial-list");
 
-  if (partSearchInput) partSearchInput.value = "";
+  if (partSearchInput && !preserveSearchText) partSearchInput.value = "";
+  if (serialLookupInput) serialLookupInput.value = "";
+  if (serialLookupStatus) {
+    serialLookupStatus.hidden = true;
+    serialLookupStatus.innerHTML = "";
+  }
+  
   if (partSelect) {
     partSelect.value = "";
     partSelect.dataset.selectionSource = "";
     partSelect.dataset.manualSelection = "false";
   }
+  
+  // Hide serial UI groups
+  if (serialSelectionGroup) serialSelectionGroup.hidden = true;
+  if (inSerialsGroup) inSerialsGroup.hidden = true;
+  if (serialList) serialList.innerHTML = "";
+  
   currentSelectedPart = null;
   if (sparepartNoInput) sparepartNoInput.value = "";
   if (reasonSelect) reasonSelect.dataset.manualSelection = "false";
+  
   const priceInput = document.getElementById("price-unit");
   if (priceInput) priceInput.value = "";
+  
+  const priceGroup = document.getElementById("price-unit-group");
+  if (priceGroup) priceGroup.hidden = true;
 
   renderSelectedPartSummary(null);
   renderPartSelectionWarning("");
   setExistingSerialLookup([]);
   closePartAutocomplete();
+  
+  // Reset quantity
+  const qtyInput = document.getElementById("quantity");
+  if (qtyInput) {
+    qtyInput.value = "";
+    qtyInput.readOnly = false;
+  }
 }
 
 function selectPart(part, options = {}) {
@@ -1099,151 +1226,108 @@ window.correctMovement = correctMovement;
 
 document.getElementById("movement-form").addEventListener("submit", async function (e) {
   e.preventDefault();
-  console.log("Submit button clicked - Handler started");
+  
+  const submitBtn = document.getElementById("submit-all-btn");
+  const receiver = document.getElementById("receiver").value.trim();
+  const receiptNumber = document.getElementById("receipt-number").value.trim();
+  const note = document.getElementById("note").value.trim();
+
+  if (itemCart.length === 0) {
+      showToast(i18nText("cartEmpty", "Please add items to the list first"), "warning");
+      return;
+  }
+
+  if (!receiver || !receiptNumber) {
+      showToast("Please enter Receiver and Request Number", "warning");
+      return;
+  }
 
   try {
+    submitBtn.disabled = true;
     const token = localStorage.getItem("token");
-    if (!token) {
-      showToast("Session expired. Please login again.", "error");
-      window.location.href = "login.html";
-      return;
-    }
+    let successCount = 0;
 
-    const part_id = parseInt(document.getElementById("part-select").value);
-    const movement_type = document.getElementById("movement-type").value;
-    const quantity = parseInt(document.getElementById("quantity").value);
-    const department = document.getElementById("reason-select").value;
-    const receiver = document.getElementById("receiver").value;
-    const receipt_number = document.getElementById("receipt-number").value;
-    const due_date = document.getElementById("due-date").value;
-    const note = document.getElementById("note").value;
-    const price = document.getElementById("price-unit").value;
+    for (let i = 0; i < itemCart.length; i++) {
+        const item = itemCart[i];
+        let endpoint = "/stock-movements";
+        let payload = {
+            part_id: item.partId,
+            movement_type: item.type,
+            quantity: item.quantity,
+            department: item.department,
+            receiver: receiver,
+            receipt_number: receiptNumber,
+            note: note,
+            due_date: item.due_date,
+            serial_ids: item.serialIds,
+            new_serials: item.newSerials,
+            price: item.price
+        };
 
-    console.log("Form values collected:", { part_id, movement_type, quantity, department });
-
-    if (!part_id || isNaN(part_id)) {
-      showToast("Please select a valid part.", "warning");
-      return;
-    }
-
-    if (!quantity || isNaN(quantity) || quantity <= 0) {
-      showToast("Please enter a valid quantity.", "warning");
-      return;
-    }
-
-    // Bypass confirm() as it seems to be suppressed in user environment
-    console.log("Proceeding with submission (skipping confirm)...");
-
-    const selectedSerials = Array.from(document.querySelectorAll('input[name="serial"]:checked')).map(cb => parseInt(cb.value));
-    const newSerialsRaw = document.getElementById("in-serials")?.value || "";
-    const newSerials = movement_type === "IN" ? newSerialsRaw.split("\n").map(s => s.trim()).filter(Boolean) : [];
-    const requestedQty = movement_type === "IN" ? newSerials.length : quantity;
-    const selectedPart = cachedParts.find(p => Number(p.id) === Number(part_id));
-    const selectedPartIsPack = isPackUnitType(selectedPart?.unit_type);
-
-    if (movement_type === "IN" && requestedQty !== quantity) {
-      showToast(`SP no count (${requestedQty}) must equal quantity (${quantity})`, "warning");
-      return;
-    }
-
-    if (movement_type === "IN" && requestedQty === 0) {
-      showToast("Please enter at least one SP no for Stock IN", "warning");
-      return;
-    }
-
-    if (movement_type === "IN") {
-      const existingConflicts = findExistingSerialConflicts(newSerials);
-      if (existingConflicts.length > 0) {
-        showToast("SP no already exists: " + [...new Set(existingConflicts)].join(", "), "error");
-        const inSerialsEl = document.getElementById("in-serials");
-        if (inSerialsEl) {
-          inSerialsEl.style.borderColor = "#ef4444";
-          inSerialsEl.focus();
+        if (item.type === "TRANSFER") {
+            endpoint = "/spareparts/transfer";
+            payload = {
+                part_id: item.partId,
+                target_warehouse_id: parseInt(item.target_warehouse),
+                quantity: item.quantity,
+                serial_ids: item.serialIds,
+                note: note || `Transfer by ${localStorage.getItem("username") || "user"}`
+            };
         }
-        return;
-      }
+
+        // Silent recording for batch items
+        await postData(`${endpoint}?notify=false`, payload, token);
+        successCount++;
     }
 
-    if (["OUT", "BORROW", "RETURN", "TRANSFER"].includes(movement_type) && selectedSerials.length === 0) {
-      showToast("Please select at least one SP no before submit", "warning");
-      return;
-    }
-
-    if (["OUT", "BORROW", "RETURN", "TRANSFER"].includes(movement_type) && !selectedPartIsPack && selectedSerials.length !== requestedQty) {
-      showToast(`Selected SP no (${selectedSerials.length}) must match quantity (${requestedQty})`, "warning");
-      return;
-    }
-
-    if (movement_type === "TRANSFER" && selectedPartIsPack && selectedSerials.length !== quantity) {
-      showToast(`Selected SP no (${selectedSerials.length}) must match transfer quantity (${quantity})`, "warning");
-      return;
-    }
-
-    // Strict duplicate check before submission for IN
-    if (movement_type === "IN" && newSerials.length > 0) {
-      const duplicates = newSerials.filter((item, index) => newSerials.indexOf(item) !== index);
-      if (duplicates.length > 0) {
-        showToast("Duplicate SP no detected: " + [...new Set(duplicates)].join(", "), "error");
-        const inSerialsEl = document.getElementById("in-serials");
-        if (inSerialsEl) {
-          inSerialsEl.style.borderColor = "#ef4444";
-          inSerialsEl.focus();
-        }
-        return;
-      }
-    }
-
-    console.log("Calling postData...");
-    let endpoint = "/stock-movements";
-    let payload = {
-        part_id, 
-        movement_type, 
-        quantity: requestedQty, 
-        department, 
-        receiver, 
-        receipt_number, 
-        note, 
-        due_date: movement_type === "BORROW" ? due_date : "",
-        serial_ids: selectedSerials,
-        new_serials: newSerials,
-        price: movement_type === "IN" ? price : undefined
-    };
-
-    if (movement_type === "TRANSFER") {
-      endpoint = "/spareparts/transfer";
-      payload = {
-        part_id,
-        target_warehouse_id: parseInt(document.getElementById("target-warehouse-select").value),
-        quantity,
-        serial_ids: selectedSerials,
-        note: note || `Transfer by ${localStorage.getItem("username") || "user"}`
-      };
-    }
-
-    await postData(endpoint, payload, token);
-
-    showToast(movement_type === "TRANSFER" ? "Transfer successful!" : "Stock movement recorded successfully!", "success");
-    document.getElementById("movement-form").reset();
-    resetPartSelectionState();
-    setSectionVisible(document.getElementById("serial-selection-group"), false);
-    setSectionVisible(document.getElementById("in-serials-group"), false);
-    setSectionVisible(document.getElementById("target-warehouse-group"), false);
-
-    // Save already completed at this point. Refresh errors should not be reported as save failure.
+    // Send single consolidated notification to Teams
     try {
-      await loadParts();
-      await loadMovements();
+        const firstItem = itemCart[0];
+        console.log("Triggering batch notification for", itemCart.length, "items");
+        
+        await postData("/stock-movements/batch-notify", {
+            type: firstItem.type,
+            items: itemCart.map(it => ({
+                partId: it.partId,
+                partName: it.partName,
+                partType: it.partType,
+                quantity: it.quantity,
+                serialNos: Array.isArray(it.serialNos) ? it.serialNos.join(", ") : String(it.serialNos || "-")
+            })),
+            receiver,
+            department: firstItem.department || "-",
+            requestNumber: receiptNumber,
+            note
+        }, token);
+        console.log("Batch notification request sent successfully");
+    } catch (notifErr) {
+        console.error("Batch notification failed:", notifErr);
+        showToast("Notification failed but records saved", "warning");
+    }
+
+    showToast(`${i18nText("saveSuccess", "All movements recorded!")}: ${successCount} items`, "success");
+    
+    // Cleanup everything
+    const form = document.getElementById("movement-form");
+    itemCart = [];
+    renderCartTable();
+    if (form) form.reset(); // Resets standard form fields (Receiver, Request No, etc.)
+    
+    // Full reset of all selection states and UI
+    resetPartSelectionState({ preserveSearchText: false });
+    
+    try {
+        await loadParts();
+        await loadMovements();
     } catch (refreshErr) {
-      console.error("Refresh after submit failed:", refreshErr);
-      showToast("Saved successfully, but failed to refresh latest data. Please reload page.", "warning");
+        console.error("Refresh failed", refreshErr);
     }
-  } catch (err) {
-    console.error("Submission failed ERROR:", err);
-    if (err.status === 409) {
-      showToast("Duplicate serial number detected", "error");
-    } else {
-      showToast("An error occurred: " + err.message, "error");
-    }
+    
+  } catch (error) {
+    console.error("Batch save error:", error);
+    showToast(error.message, "error");
+  } finally {
+    submitBtn.disabled = false;
   }
 });
 

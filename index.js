@@ -25,7 +25,7 @@ const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const { sendTeamsNotification, isSupportedNotificationType, normalizeNotificationType, SUPPORTED_NOTIFICATION_TYPES } = require('./teams_notifier');
+const { sendTeamsNotification, sendBatchNotification, isSupportedNotificationType, normalizeNotificationType, SUPPORTED_NOTIFICATION_TYPES } = require('./teams_notifier');
 const dbConfig = require("./db/config");
 const { createDatabase } = require("./db/adapter");
 const sqlDialect = require("./db/dialect");
@@ -172,12 +172,17 @@ app.get("/favicon.ico", (req, res) => {
   res.status(204).end();
 });
 
-// Log all requests (Moved to top for visibility)
+// Log all requests (More detailed)
 app.use((req, res, next) => {
   const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   req.requestId = requestId;
   res.setHeader("X-Request-Id", requestId);
-  console.log(`[${requestId}] ${new Date().toLocaleTimeString()} - ${req.method} ${req.url}`);
+  const start = Date.now();
+  
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[${requestId}] ${new Date().toLocaleTimeString()} - ${req.method} ${req.url} [${res.statusCode}] - ${duration}ms`);
+  });
   next();
 });
 
@@ -526,20 +531,50 @@ function createSerialGenerator(existingRows, fallbackPartNo) {
 function insertOrGetSparePartItem(partId, serialNo, itemQty, price, callback) {
   // Check if serial already exists anywhere (to prevent cross-part duplication)
   db.get(
-    "SELECT spi.id, spi.part_id, spi.status, p.name as part_name, p.price FROM spare_part_items spi JOIN spare_parts p ON spi.part_id = p.id WHERE spi.serial_no = ?",
+    "SELECT spi.id, spi.part_id, spi.status, spi.remaining_qty, p.name as part_name, p.price FROM spare_part_items spi JOIN spare_parts p ON spi.part_id = p.id WHERE spi.serial_no = ?",
     [serialNo],
     (selectErr, existingRow) => {
       if (selectErr) return callback(selectErr);
       
       if (existingRow) {
         if (Number(existingRow.part_id) === Number(partId)) {
-          // Already in this part, just return it
-          return callback(null, { itemId: existingRow.id, created: false });
+          // Already in this part. 
+          // If it's already in stock (remaining_qty > 0), it's a real duplicate.
+          if (Number(existingRow.remaining_qty || 0) > 0) {
+            return callback(null, { itemId: existingRow.id, created: false });
+          }
+          
+          // If it was consumed (remaining_qty <= 0), reactivate it!
+          db.run(
+            "UPDATE spare_part_items SET status = 'available', initial_qty = ?, remaining_qty = ?, price = ? WHERE id = ?",
+            [itemQty, itemQty, price || 0, existingRow.id],
+            (updErr) => {
+              if (updErr) return callback(updErr);
+              callback(null, { itemId: existingRow.id, created: true, reactivated: true });
+            }
+          );
+          return;
         } else {
-          // Exists in a DIFFERENT part! This is a duplicate error.
-          const err = new Error(`Serial ${serialNo} already exists in part "${existingRow.part_name}" (Price: ${Number(existingRow.price || 0).toLocaleString()})`);
-          err.status = 409;
-          return callback(err);
+          // Exists in a DIFFERENT part! 
+          // Only error if it's still in stock in that other part.
+          if (Number(existingRow.remaining_qty || 0) > 0) {
+            const err = new Error(`Serial ${serialNo} already exists in part "${existingRow.part_name}" (Price: ${Number(existingRow.price || 0).toLocaleString()})`);
+            err.status = 409;
+            return callback(err);
+          }
+          
+          // If it was consumed in another part, we COULD allow it to be re-added here, 
+          // but the current schema prefers SN to be semi-permanent.
+          // For now, let's allow it to move if it's consumed elsewhere.
+          db.run(
+            "UPDATE spare_part_items SET part_id = ?, status = 'available', initial_qty = ?, remaining_qty = ?, price = ? WHERE id = ?",
+            [partId, itemQty, itemQty, price || 0, existingRow.id],
+            (updErr) => {
+              if (updErr) return callback(updErr);
+              callback(null, { itemId: existingRow.id, created: true, moved: true });
+            }
+          );
+          return;
         }
       }
 
@@ -1284,9 +1319,9 @@ app.post("/api/verify-serials", authenticateToken, (req, res) => {
   const { serials } = req.body;
   if (!Array.isArray(serials) || serials.length === 0) return res.json({ conflicts: [] });
   
-  // ป้องกัน SQL Injection และรองรับเลขจำนวนมาก
+  // Only check for serials that are currently IN STOCK (remaining_qty > 0)
   const placeholders = serials.map(() => "?").join(",");
-  const sql = `SELECT DISTINCT serial_no FROM spare_part_items WHERE serial_no IN (${placeholders})`;
+  const sql = `SELECT DISTINCT serial_no FROM spare_part_items WHERE serial_no IN (${placeholders}) AND COALESCE(remaining_qty, 0) > 0`;
   
   db.all(sql, serials, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -1585,21 +1620,25 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
               touchedSerialCount: touchedSerialNos.length
             });
 
-            sendTeamsNotification({
-              type: movement_type,
-              partName: partMeta.name || partMeta.part_no || `Part ID ${part_id}`,
-              quantity: requestedQty,
-              user: req.user?.username || "System",
-              receiver: receiver || "-",
-              department: department || "-",
-              warehouse: partMeta.warehouse_name || "-",
-              serialNos: touchedSerialNos.length > 0 ? touchedSerialNos.join(", ") : "-",
-              requestNumber: receipt_number || "-",
-              note: note || "-"
-            });
+            const shouldNotify = req.query.notify !== "false";
+            if (shouldNotify) {
+              sendTeamsNotification({
+                type: movement_type,
+                partName: partMeta.name || partMeta.part_no || `Part ID ${part_id}`,
+                quantity: requestedQty,
+                user: req.user?.username || "System",
+                receiver: receiver || "-",
+                department: department || "-",
+                warehouse: partMeta.warehouse_name || "-",
+                serialNos: touchedSerialNos.length > 0 ? touchedSerialNos.join(", ") : "-",
+                requestNumber: receipt_number || "-",
+                note: note || "-"
+              });
+            }
 
-            // Trigger Low Stock Alert if quantity <= 3 after removal
-            if (movement_type === "OUT" || movement_type === "BORROW" || movement_type === "TRANSFER") {
+            // Trigger Low Stock Alert if quantity <= 3 after removal (Only if NOT a silent batch movement)
+            const isSilent = req.query.notify === "false";
+            if (!isSilent && (movement_type === "OUT" || movement_type === "BORROW" || movement_type === "TRANSFER")) {
               db.get("SELECT quantity, name, warehouseId FROM spare_parts WHERE id = ?", [part_id], (err, current) => {
                 if (!err && current && current.quantity <= 3) {
                   db.get("SELECT name FROM warehouses WHERE id = ?", [current.warehouseId], (wErr, wh) => {
@@ -1629,7 +1668,10 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
           );
         };
 
-        const allocatePackUsage = (movementId) => {
+// (Moved batch-notify down to correct scope)
+
+// Helper for Pack Allocation Logic
+const allocatePackUsage = (movementId) => {
           const serialFilterSql = selectedSerialIds.length > 0
             ? ` AND id IN (${selectedSerialIds.map(() => "?").join(",")})`
             : "";
@@ -1843,6 +1885,37 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
     });
   });
 });
+
+// --- BATCH NOTIFICATION ENDPOINT ---
+app.post("/stock-movements/batch-notify", authenticateToken, (req, res) => {
+  const { type, items, receiver, department, warehouse, requestNumber, note } = req.body;
+  console.log(`[BATCH-NOTIFY] Type: ${type}, Items: ${items?.length}, User: ${req.user?.username || 'Unknown'}`);
+  
+  if (!items || !Array.isArray(items)) return res.status(400).json({ error: "Invalid items" });
+
+  const enrichedItemsPromises = items.map(item => {
+    return new Promise((resolve) => {
+      db.get("SELECT quantity FROM spare_parts WHERE id = ? OR name = ?", [item.partId, item.partName], (err, row) => {
+        resolve({ ...item, remainingQty: row ? row.quantity : '?' });
+      });
+    });
+  });
+
+  Promise.all(enrichedItemsPromises).then(enrichedItems => {
+    sendBatchNotification({
+      type,
+      items: enrichedItems,
+      user: req.user?.username || "System",
+      receiver: receiver || "-",
+      department: department || "-",
+      warehouse: warehouse || "-",
+      requestNumber: requestNumber || "-",
+      note: note || "-"
+    });
+    res.json({ message: "Batch notification sent" });
+  });
+});
+
 
 app.post("/stock-movements/:id/correct", authenticateToken, requireRole(["admin", "co-admin"]), (req, res) => {
   const originalMovementId = Number(req.params.id);

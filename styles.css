@@ -2102,3 +2102,122 @@ tbody tr:hover {
   padding: 4px;
   font-size: 14px;
 }
+
+/* Multi-Item Cart Styles */
+.cart-table-premium {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 12px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+.cart-table-premium th {
+  background: #f8fafc;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+.cart-table-premium td {
+  padding: 12px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border-color);
+  background: #fff;
+}
+.cart-row:hover td {
+  background: #f1f5f9;
+}
+.cart-part-name {
+  font-weight: 600;
+  color: var(--text-main);
+}
+.btn-delete {
+  background: #fee2e2;
+  color: #ef4444;
+  border: 1px solid #fecaca;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+}
+.btn-delete:hover {
+  background: #fecaca;
+  transform: scale(1.1);
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+}
+.btn-delete i {
+  font-size: 16px;
+}
+
+.btn-secondary-premium {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+.btn-secondary-premium:hover {
+  background: #e2e8f0;
+}
+.flex-gap-12 {
+  display: flex;
+  gap: 12px;
+}
+.spinner-tiny {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(0,0,0,.1);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+
+/* Icon Buttons */
+.btn-icon-edit {
+  background: #eff6ff;
+  color: #3b82f6;
+  border: 1px solid #bfdbfe;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-icon-edit:hover {
+  background: #dbeafe;
+  transform: scale(1.1);
+}
+.btn-icon-delete {
+  background: #fef2f2;
+  color: #ef4444;
+  border: 1px solid #fecaca;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-icon-delete:hover {
+  background: #fee2e2;
+  transform: scale(1.1);
+}

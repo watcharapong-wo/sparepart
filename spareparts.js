@@ -135,8 +135,8 @@ function renderSparePartsTable(data) {
           <td class="actions-cell text-center">
             <div class="row-actions">
               ${(_userRole === 'admin' || _userRole === 'co-admin') ? `
-                <button onclick="editPart(${p.id})" class="btn btn-sm btn-primary" data-i18n="edit">Edit</button>
-                <button onclick="deletePart(${p.id})" class="btn btn-sm btn-danger" data-i18n="delete">Delete</button>
+                <button onclick="editPart(${p.id})" class="btn-sm btn-icon-edit" title="Edit"><i class="fas fa-edit"></i></button>
+                <button onclick="deletePart(${p.id})" class="btn-sm btn-icon-delete" title="Delete"><i class="fas fa-trash-alt"></i></button>
               ` : `
                 <span class="text-muted" style="font-size: 11px;">-</span>
               `}

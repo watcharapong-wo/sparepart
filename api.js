@@ -1,4 +1,4 @@
-window.API_URL = `${window.location.protocol}//${window.location.hostname}:${window.location.port}`;
+window.API_URL = `${window.location.protocol}//${window.location.hostname}:5000`;
 const API_URL = window.API_URL;
 
 function normalizeRole(role) {

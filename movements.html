@@ -6,6 +6,7 @@
   <title>Stock Movements - IT Spare Part System</title>
   <link rel="icon" type="image/png" href="public/assets/images/logo.png">
   <link rel="stylesheet" href="styles.css?v=1.8">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
   <nav class="navbar">
@@ -65,7 +66,7 @@
               <div id="part-autocomplete-results" class="part-autocomplete-results" hidden></div>
               <div id="part-selection-warning" class="part-selection-warning" hidden></div>
               <div id="part-selection-summary" class="part-selection-summary" hidden></div>
-              <select id="part-select" class="part-select-native" required title="Select part"></select>
+              <select id="part-select" class="part-select-native" title="Select part"></select>
             </div>
           </div>
 
@@ -77,13 +78,13 @@
 
           <div class="stacked-form-group">
             <label id="quantity-label" data-i18n="qty" for="quantity">Quantity</label>
-            <input type="number" id="quantity" required min="1" placeholder="Enter quantity" title="Quantity">
+            <input type="number" id="quantity" min="1" placeholder="Enter quantity" title="Quantity">
             <div id="piece-stock-info" hidden class="piece-stock-info"></div>
           </div>
 
           <div class="stacked-form-group">
             <label data-i18n="unitType" for="unit-type">Unit Type</label>
-            <select id="unit-type" required title="Select unit type">
+            <select id="unit-type" title="Select unit type">
               <option value="M" data-i18n="m">M</option>
               <option value="PC" data-i18n="pc">PC</option>
               <option value="PAC" data-i18n="pac">PAC</option>
@@ -94,7 +95,7 @@
 
           <div class="stacked-form-group">
             <label data-i18n="warehouseLabel" for="reason-select">Warehouse</label>
-            <select id="reason-select" required title="Select warehouse"></select>
+            <select id="reason-select" title="Select warehouse"></select>
           </div>
 
           <!-- Conditional Row Fields (Flow naturally) -->
@@ -112,7 +113,6 @@
           <div id="serial-selection-group" class="serial-area-v2 full-span" hidden>
             <div class="flex-space-between margin-bottom-8">
               <label data-i18n="selectSerials" class="section-label no-margin">Select Individual SP No: (<span id="selected-count">0</span> selected)</label>
-              <input type="text" id="serial-search" placeholder="Search SP no..." class="serial-search-input-small" title="Search SP No">
             </div>
             <div id="serial-list" class="serial-grid-v2"></div>
             <div id="serial-warning" class="serial-warning" hidden>No available SP no for this part.</div>
@@ -123,6 +123,32 @@
             <textarea id="in-serials" rows="3" placeholder="SN001\nSN002" title="Enter serial numbers"></textarea>
             <div id="in-serials-helper" class="in-serials-helper">
               Enter one SP no per line.
+            </div>
+          </div>
+
+          <div class="full-span margin-top-16 margin-bottom-24" style="border-bottom: 1px dashed var(--border-color); padding-bottom: 24px;">
+            <button type="button" id="add-to-cart-btn" class="btn-secondary-premium">
+              <i class="fas fa-plus-circle"></i> <span data-i18n="addToList">ADD TO LIST</span>
+            </button>
+          </div>
+
+          <!-- CART SECTION -->
+          <div id="movement-cart-container" class="full-span margin-top-16" hidden>
+            <div class="cart-title" style="font-weight:600; margin-bottom: 8px; color: var(--primary);">
+              <i class="fas fa-shopping-cart"></i> <span data-i18n="itemsInList">Items in this Batch</span>
+            </div>
+            <div class="table-responsive">
+              <table id="cart-table" class="cart-table-premium">
+                <thead>
+                  <tr>
+                    <th data-i18n="partName">Part</th>
+                    <th data-i18n="qty">Qty</th>
+                    <th data-i18n="serialNumbers">Serials</th>
+                    <th data-i18n="actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="cart-items"></tbody>
+              </table>
             </div>
           </div>
 
@@ -153,8 +179,12 @@
             <textarea id="note" rows="2" placeholder="Enter note" title="Note"></textarea>
           </div>
 
-          <div class="form-actions-v2 full-span">
-            <button type="submit" class="btn-submit-premium" data-i18n="submit">RECORD MOVEMENT</button>
+          <!-- Notes and Batch Action moved after Meta -->
+
+          <div class="form-actions-v2 full-span margin-top-24">
+            <button type="submit" id="submit-all-btn" class="btn btn-primary" style="width: 100%; padding: 16px; font-size: 18px;" disabled>
+              <i class="fas fa-check-double"></i> <span data-i18n="recordAllMovements">SUBMIT ALL ITEMS</span>
+            </button>
           </div>
         </form>
       </div>
