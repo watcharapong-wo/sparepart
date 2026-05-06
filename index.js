@@ -256,12 +256,15 @@ db.run(
     note TEXT,
     department TEXT,
     receiver TEXT,
+    receiver_name TEXT,
     receipt_number TEXT,
     user_id INTEGER,
     due_date DATETIME,
     correction_of INTEGER,
     correction_reason TEXT,
     return_status TEXT DEFAULT 'pending',
+    unit_type TEXT,
+    price REAL,
     FOREIGN KEY (part_id) REFERENCES spare_parts(id)
   )`,
   (err) => {
@@ -271,12 +274,15 @@ db.run(
       const cols = {
         department: "TEXT",
         receiver: "TEXT",
+        receiver_name: "TEXT",
         receipt_number: "TEXT",
         user_id: "INTEGER",
         due_date: "DATETIME",
         correction_of: "INTEGER",
         correction_reason: "TEXT",
-        return_status: "TEXT DEFAULT 'pending'"
+        return_status: "TEXT DEFAULT 'pending'",
+        unit_type: "TEXT",
+        price: "REAL"
       };
       Object.keys(cols).forEach(col => {
         db.run(`ALTER TABLE stock_movements ADD COLUMN ${col} ${cols[col]}`, (err2) => {
@@ -752,16 +758,39 @@ app.get("/report/activity-logs", authenticateToken, requireRole(["admin"]), (req
 
 app.get("/report/movements3", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT m.*, p.name as part_name, p.part_no, u.username,
+  const startDate = req.query.startDate;
+  const endDate = req.query.endDate;
+  
+  let sql = `SELECT m.*, p.name as part_name, p.part_no, COALESCE(m.unit_type, p.unit_type) AS unit_type, 
+                    COALESCE(m.price, p.price, 0) AS price, u.username, m.receiver_name,
                     CASE WHEN EXISTS (SELECT 1 FROM stock_movements c WHERE c.correction_of = m.id) THEN 1 ELSE 0 END AS has_correction
              FROM stock_movements m
              JOIN spare_parts p ON m.part_id = p.id
              LEFT JOIN users u ON m.user_id = u.id
-             WHERE m.movement_date >= ${sqlDialect.dateDaysAgo(30)}`;
+             WHERE 1=1`;
+             
   const params = [];
-  if (warehouseId && warehouseId !== 'all') { sql += " AND p.warehouseId = ?"; params.push(warehouseId); }
+  
+  if (startDate && endDate) {
+    sql += ` AND m.movement_date BETWEEN ? AND ?`;
+    params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
+  } else if (startDate) {
+    sql += ` AND m.movement_date >= ?`;
+    params.push(`${startDate} 00:00:00`);
+  } else if (endDate) {
+    sql += ` AND m.movement_date <= ?`;
+    params.push(`${endDate} 23:59:59`);
+  } else {
+    sql += ` AND m.movement_date >= ${sqlDialect.dateDaysAgo(30)}`;
+  }
+
+  if (warehouseId && warehouseId !== 'all') { 
+    sql += " AND p.warehouseId = ?"; 
+    params.push(warehouseId); 
+  }
+  
   sql += " ORDER BY m.movement_date DESC";
-  console.log("[MOVEMENTS3] warehouseId:", warehouseId, "SQL:", sql, "Params:", params);
+  
   db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     const movementIds = (rows || []).map((row) => row.id);
@@ -771,7 +800,6 @@ app.get("/report/movements3", authenticateToken, (req, res) => {
         ...row,
         serial_usage: (usageMap.get(row.id) || []).join(", ") || "-"
       }));
-    console.log("[MOVEMENTS3] result:", rows);
       res.json(result);
     });
   });
@@ -838,7 +866,7 @@ app.get("/report/overdue", authenticateToken, (req, res) => {
 
 app.get("/report/insights", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  const popularSql = `SELECT p.part_no, p.name,
+  const popularSql = `SELECT p.part_no, p.name, p.unit_type,
                              COALESCE(p.description, '') AS description,
                              p.price,
                              SUM(m.quantity) AS total_consumed,
@@ -846,9 +874,9 @@ app.get("/report/insights", authenticateToken, (req, res) => {
                       FROM stock_movements m
                       JOIN spare_parts p ON m.part_id = p.id
                       WHERE m.movement_type IN ('OUT', 'BORROW') ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''}
-                      GROUP BY p.id, p.part_no, p.name, p.description
+                      GROUP BY p.id, p.part_no, p.name, p.description, p.unit_type
                       ORDER BY total_consumed DESC ${sqlDialect.limit(5)}`;
-  const lowStockSql = `SELECT p.part_no, p.name, p.quantity, p.price, w.name AS warehouse_name
+  const lowStockSql = `SELECT p.part_no, p.name, p.quantity, p.price, p.unit_type, w.name AS warehouse_name
                        FROM spare_parts p
                        LEFT JOIN warehouses w ON p.warehouseId = w.id
                        WHERE p.quantity > 0 AND p.quantity < 10 ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''}
@@ -863,13 +891,13 @@ app.get("/report/insights", authenticateToken, (req, res) => {
                         AND COALESCE(m.return_status, 'pending') = 'pending'
                         ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''}
                       ORDER BY days_overdue DESC ${sqlDialect.limit(5)}`;
-  const deadStockSql = `SELECT p.part_no, p.name, p.quantity,
+  const deadStockSql = `SELECT p.part_no, p.name, p.quantity, p.unit_type,
                                COALESCE(p.price, 0) * p.quantity AS stock_value,
                                MAX(m.movement_date) as last_movement
                         FROM spare_parts p
                         LEFT JOIN stock_movements m ON p.id = m.part_id
                         WHERE p.quantity > 0 ${warehouseId && warehouseId !== 'all' ? 'AND p.warehouseId = ?' : ''}
-                        GROUP BY p.id, p.part_no, p.name, p.quantity, p.price
+                        GROUP BY p.id, p.part_no, p.name, p.quantity, p.price, p.unit_type
                         HAVING MAX(m.movement_date) IS NULL OR MAX(m.movement_date) < ${sqlDialect.dateDaysAgo(180)}
                         ORDER BY stock_value DESC, last_movement ASC ${sqlDialect.limit(10)}`;
   const params = warehouseId && warehouseId !== 'all' ? [warehouseId] : [];
@@ -1487,7 +1515,7 @@ app.get("/spareparts/:id/serials", authenticateToken, (req, res) => {
 
 // API สำหรับบันทึกการเบิกจ่าย (Stock Movement)
 app.post("/stock-movements", authenticateToken, (req, res) => {
-  const { part_id, movement_type, quantity, department, receiver, receipt_number, note, due_date, serial_ids, new_serials, price } = req.body;
+  const { part_id, movement_type, quantity, department, receiver, receiver_name, receipt_number, note, due_date, serial_ids, new_serials, price, unit_type } = req.body;
   const userId = req.user.userId;
   const reqId = req.requestId || "n/a";
   const selectedSerialIds = Array.isArray(serial_ids)
@@ -1557,12 +1585,12 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
         return res.status(400).json({ error: "Please select at least one SP no" });
       }
 
-      if (!usesPackUnit && ["OUT", "BORROW", "RETURN"].includes(movement_type) && selectedSerialIds.length !== requestedQty) {
-        return res.status(400).json({
-          error: `Selected SP no (${selectedSerialIds.length}) must equal quantity (${requestedQty})`,
-          requestId: reqId
-        });
-      }
+      // Updated: Allow selecting fewer SP numbers if they have enough total quantity (common for items like RJ45)
+      // We will now use the allocation logic for all unit types to support partial deductions.
+      const isManualSelection = ["OUT", "BORROW", "RETURN"].includes(movement_type);
+      
+      // We don't strictly enforce selectedSerialIds.length === requestedQty anymore.
+      // The allocation logic will check if total remaining_qty is sufficient.
 
       db.serialize(() => {
         db.run("BEGIN TRANSACTION");
@@ -1608,6 +1636,10 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
           );
         };
 
+        const movementUnit = unit_type || ((usesPackUnit && ["OUT", "BORROW", "RETURN"].includes(movement_type)) 
+          ? "PC" 
+          : (partMeta.unit_type || ""));
+
         const finalizeMovement = (movementId, touchedSerialNos) => {
           const updateTotals = usesPackUnit ? updatePackTotals : updateSimpleTotals;
           updateTotals((updateErr) => {
@@ -1627,11 +1659,13 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
                 partName: partMeta.name || partMeta.part_no || `Part ID ${part_id}`,
                 quantity: requestedQty,
                 user: req.user?.username || "System",
-                receiver: receiver || "-",
+                receiver: receiver || "-", // This is Issuer
+                receiver_name: receiver_name || "-", // This is Receiver
                 department: department || "-",
                 warehouse: partMeta.warehouse_name || "-",
                 serialNos: touchedSerialNos.length > 0 ? touchedSerialNos.join(", ") : "-",
                 requestNumber: receipt_number || "-",
+                unitType: movementUnit,
                 note: note || "-"
               });
             }
@@ -1639,13 +1673,14 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
             // Trigger Low Stock Alert if quantity <= 3 after removal (Only if NOT a silent batch movement)
             const isSilent = req.query.notify === "false";
             if (!isSilent && (movement_type === "OUT" || movement_type === "BORROW" || movement_type === "TRANSFER")) {
-              db.get("SELECT quantity, name, warehouseId FROM spare_parts WHERE id = ?", [part_id], (err, current) => {
+              db.get("SELECT quantity, name, unit_type, warehouseId FROM spare_parts WHERE id = ?", [part_id], (err, current) => {
                 if (!err && current && current.quantity <= 3) {
                   db.get("SELECT name FROM warehouses WHERE id = ?", [current.warehouseId], (wErr, wh) => {
                     sendTeamsNotification({
                       type: "LOW_STOCK",
                       partName: current.name,
                       quantity: current.quantity,
+                      unitType: current.unit_type || "",
                       user: "System (Stock Level Auto-Check)",
                       warehouse: wh ? wh.name : "-",
                       note: `Attention: Stock is critically low (${current.quantity} units remaining)`
@@ -1688,7 +1723,10 @@ const allocatePackUsage = (movementId) => {
               if (itemsErr) return rollbackWith(500, itemsErr.message);
               const totalRemaining = rows.reduce((sum, row) => sum + (Number(row.remaining_qty) || 0), 0);
               if (totalRemaining < requestedQty) {
-                return rollbackWith(400, "Not enough quantity in SP no list");
+                const detail = selectedSerialIds.length > 0
+                  ? `Selected ${rows.length} SP no(s) have only ${totalRemaining} pieces, but ${requestedQty} requested`
+                  : `Only ${totalRemaining} pieces available, but ${requestedQty} requested`;
+                return rollbackWith(400, `Not enough quantity in SP no list: ${detail}`);
               }
 
               let remainingToTake = requestedQty;
@@ -1806,8 +1844,8 @@ const allocatePackUsage = (movementId) => {
         };
 
         getMovePrice((movePrice) => {
-          const moveSql = "INSERT INTO stock_movements (part_id, movement_type, quantity, department, receiver, receipt_number, note, user_id, due_date, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-          db.run(moveSql, [part_id, movement_type, requestedQty, department, receiver, receipt_number, note, userId, due_date || null, movePrice], function(err) {
+          const moveSql = "INSERT INTO stock_movements (part_id, movement_type, quantity, unit_type, department, receiver, receiver_name, receipt_number, note, user_id, due_date, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+          db.run(moveSql, [part_id, movement_type, requestedQty, movementUnit, department, receiver, receiver_name, receipt_number, note, userId, due_date || null, movePrice], function(err) {
             if (err) return rollbackWith(500, err.message);
             const movementId = this.lastID;
             console.log(`[${reqId}] [MOVEMENT] Inserted stock_movements row`, { movementId, movePrice });
@@ -1836,50 +1874,13 @@ const allocatePackUsage = (movementId) => {
             return insertNext();
           }
 
-          if (usesPackUnit && (movement_type === "OUT" || movement_type === "BORROW")) {
+          // Updated: Always use allocation logic for OUT/BORROW/RETURN to support partial quantity deductions from SP numbers
+          if (movement_type === "OUT" || movement_type === "BORROW") {
             return allocatePackUsage(movementId);
           }
-
-          if (usesPackUnit && movement_type === "RETURN") {
+          if (movement_type === "RETURN") {
             return restorePackUsage(movementId);
           }
-
-          if (selectedSerialIds.length > 0) {
-            const nextStatus = movement_type === "RETURN" ? "available" : "consumed";
-            const nextRemaining = movement_type === "RETURN" ? 1 : 0;
-            let itemIndex = 0;
-            const touchedSerialNos = [];
-
-            const updateNext = () => {
-              if (itemIndex >= selectedSerialIds.length) return finalizeMovement(movementId, touchedSerialNos);
-              const itemId = selectedSerialIds[itemIndex];
-              db.get(
-                "SELECT serial_no, COALESCE(remaining_qty, 1) AS remaining_qty FROM spare_part_items WHERE id = ? AND part_id = ?",
-                [itemId, part_id],
-                (rowErr, row) => {
-                if (rowErr) return rollbackWith(500, rowErr.message);
-                if (!row) return rollbackWith(400, `Invalid SP no selected: ${itemId}`);
-                const beforeQty = Number(row?.remaining_qty) || 0;
-                db.run(
-                  "UPDATE spare_part_items SET status = ?, remaining_qty = ?, last_used_at = CURRENT_TIMESTAMP WHERE id = ?",
-                  [nextStatus, nextRemaining, itemId],
-                  (updateErr) => {
-                    if (updateErr) return rollbackWith(500, updateErr.message);
-                    insertMovementItem(movementId, itemId, 1, beforeQty, nextRemaining, (linkErr) => {
-                      if (linkErr) return rollbackWith(500, linkErr.message);
-                      if (row?.serial_no) touchedSerialNos.push(row.serial_no);
-                      itemIndex += 1;
-                      updateNext();
-                    });
-                  }
-                );
-              }
-            );
-            };
-            return updateNext();
-          }
-
-          return finalizeMovement(movementId, []);
         });
       });
     });
@@ -1888,15 +1889,21 @@ const allocatePackUsage = (movementId) => {
 
 // --- BATCH NOTIFICATION ENDPOINT ---
 app.post("/stock-movements/batch-notify", authenticateToken, (req, res) => {
-  const { type, items, receiver, department, warehouse, requestNumber, note } = req.body;
+  const { type, items, receiver, receiver_name, department, warehouse, requestNumber, note } = req.body;
   console.log(`[BATCH-NOTIFY] Type: ${type}, Items: ${items?.length}, User: ${req.user?.username || 'Unknown'}`);
   
   if (!items || !Array.isArray(items)) return res.status(400).json({ error: "Invalid items" });
 
   const enrichedItemsPromises = items.map(item => {
     return new Promise((resolve) => {
-      db.get("SELECT quantity FROM spare_parts WHERE id = ? OR name = ?", [item.partId, item.partName], (err, row) => {
-        resolve({ ...item, remainingQty: row ? row.quantity : '?' });
+      db.get("SELECT quantity, unit_type FROM spare_parts WHERE id = ? OR name = ?", [item.partId, item.partName], (err, row) => {
+        // Determine the correct unit for the notification based on the movement type
+        const usesPackUnit = row && ["BOX", "PAC"].includes(String(row.unit_type || "PC").trim().toUpperCase());
+        const notificationUnit = item.unitType || ((usesPackUnit && ["OUT", "BORROW", "RETURN"].includes(type)) 
+          ? "PC" 
+          : (row ? row.unit_type : ''));
+
+        resolve({ ...item, remainingQty: row ? row.quantity : '?', unitType: notificationUnit });
       });
     });
   });
@@ -1906,7 +1913,8 @@ app.post("/stock-movements/batch-notify", authenticateToken, (req, res) => {
       type,
       items: enrichedItems,
       user: req.user?.username || "System",
-      receiver: receiver || "-",
+      receiver: receiver || "-", // Issuer
+      receiver_name: receiver_name || "-", // Receiver
       department: department || "-",
       warehouse: warehouse || "-",
       requestNumber: requestNumber || "-",
@@ -1939,7 +1947,7 @@ app.post("/stock-movements/:id/correct", authenticateToken, requireRole(["admin"
     db.run("BEGIN TRANSACTION");
 
     db.get(
-      `SELECT m.*, p.name AS part_name, p.part_no, p.unit_type, COALESCE(p.conversion_rate, 1) AS conversion_rate
+      `SELECT m.*, p.name AS part_name, p.part_no, COALESCE(m.unit_type, p.unit_type) AS unit_type, COALESCE(p.conversion_rate, 1) AS conversion_rate
        FROM stock_movements m
        JOIN spare_parts p ON p.id = m.part_id
        WHERE m.id = ?`,
@@ -2074,14 +2082,16 @@ app.post("/stock-movements/:id/correct", authenticateToken, requireRole(["admin"
 
                   db.run(
                     `INSERT INTO stock_movements
-                     (part_id, movement_type, quantity, department, receiver, receipt_number, note, user_id, due_date, return_status, correction_of, correction_reason)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                     (part_id, movement_type, quantity, unit_type, department, receiver, receiver_name, receipt_number, note, user_id, due_date, return_status, correction_of, correction_reason)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                       original.part_id,
                       correctionType,
                       Number(original.quantity) || 0,
+                      original.unit_type || null,
                       original.department || null,
                       original.receiver || null,
+                      original.receiver_name || null,
                       original.receipt_number || null,
                       correctionNote,
                       userId,
@@ -2258,6 +2268,7 @@ app.post("/spareparts/transfer", authenticateToken, (req, res) => {
                             sourceWarehouse: warehouseMap.get(Number(part.warehouseId)) || String(part.warehouseId || "-"),
                             destinationWarehouse: warehouseMap.get(Number(target_warehouse_id)) || String(target_warehouse_id),
                             serialNos: serialNosForNotification,
+                            unitType: part.unit_type || "",
                             note: note || "-"
                           });
                         }
@@ -2308,7 +2319,7 @@ app.post("/spareparts/transfer", authenticateToken, (req, res) => {
 // API สำหรับส่งออก CSV
 app.get("/export/inventory", authenticateToken, (req, res) => {
   const warehouseId = req.query.warehouseId;
-  let sql = `SELECT p.part_no, p.name, p.description, p.quantity, p.price, w.name AS warehouse
+  let sql = `SELECT p.part_no, p.name, p.description, p.quantity, p.unit_type, p.price, w.name AS warehouse
              FROM spare_parts p
              LEFT JOIN warehouses w ON p.warehouseId = w.id`;
   const params = [];
@@ -2323,37 +2334,88 @@ app.get("/export/inventory", authenticateToken, (req, res) => {
   db.all(sql, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
 
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('th-TH');
+    const timeStr = now.toLocaleTimeString('th-TH');
+    const filenameDate = now.getFullYear() + "_" + (now.getMonth() + 1) + "_" + now.getDate() + "_" + now.getHours() + now.getMinutes();
+
     const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-    const headers = ["Part No", "Name", "Description", "Quantity", "Price", "Warehouse"];
+    const headers = ["Export Date", "Export Time", "Part No", "Name", "Description", "Quantity", "Unit", "Price", "Warehouse"];
     const csvRows = (rows || []).map((r) => [
+      escapeCsv(dateStr),
+      escapeCsv(timeStr),
       escapeCsv(r.part_no),
       escapeCsv(r.name),
       escapeCsv(r.description),
       escapeCsv(r.quantity),
+      escapeCsv(r.unit_type),
       escapeCsv(r.price),
       escapeCsv(r.warehouse)
     ].join(","));
     const csvContent = "\ufeff" + [headers.join(","), ...csvRows].join("\n");
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", "attachment; filename=inventory.csv");
+    res.setHeader("Content-Disposition", `attachment; filename=inventory_${filenameDate}.csv`);
     res.send(csvContent);
   });
 });
 
 app.get("/export/movements", authenticateToken, (req, res) => {
-  const sql = `SELECT m.movement_date, m.movement_type, p.name, p.part_no, m.quantity, m.department, m.receiver, m.note 
-               FROM stock_movements m JOIN spare_parts p ON m.part_id = p.id ORDER BY m.movement_date DESC`;
+  const sql = `SELECT m.id, m.movement_date, m.movement_type, m.return_status, m.due_date, m.receipt_number,
+                     p.name, p.part_no, p.description, m.quantity, m.price, m.department, m.receiver, m.receiver_name, m.note,
+                     w.name AS warehouse_name
+               FROM stock_movements m 
+               JOIN spare_parts p ON m.part_id = p.id 
+               LEFT JOIN warehouses w ON p.warehouseId = w.id
+               ORDER BY m.movement_date DESC`;
+               
   db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     
-    const headers = ["Date", "Type", "Part Name", "Part No", "Qty", "Dept", "Receiver", "Note"];
-    const csvRows = rows.map(r => [r.movement_date, r.movement_type, r.name, r.part_no, r.quantity, r.department, r.receiver, r.note].join(","));
-    const csvContent = "\ufeff" + [headers.join(","), ...csvRows].join("\n");
-    
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", "attachment; filename=movements.csv");
-    res.send(csvContent);
+    const movementIds = (rows || []).map(r => r.id);
+    fetchMovementSerialUsageMap(movementIds, (usageErr, usageMap) => {
+      if (usageErr) return res.status(500).json({ error: usageErr.message });
+      
+      const now = new Date();
+      const filenameDate = now.getFullYear() + "_" + (now.getMonth() + 1) + "_" + now.getDate() + "_" + now.getHours() + now.getMinutes();
+      
+      const escapeCsv = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+      const headers = [
+        "Date", "Type", "Return Status", "Part Name", "Part Type", "Qty", 
+        "Unit Price Used", "Total Value", "Warehouse", "Due Date", 
+        "Receiver", "Request Number", "SP No Usage", "Note"
+      ];
+      
+      const csvRows = rows.map(r => {
+        const unitPrice = Number(r.price || 0);
+        const qty = Number(r.quantity || 0);
+        const totalValue = unitPrice * qty;
+        const serialUsage = (usageMap.get(r.id) || []).join(", ") || "-";
+        
+        return [
+          escapeCsv(r.movement_date),
+          escapeCsv(r.movement_type),
+          escapeCsv(r.return_status || "N/A"),
+          escapeCsv(r.name),
+          escapeCsv(r.description || r.part_no),
+          escapeCsv(r.quantity),
+          escapeCsv(unitPrice),
+          escapeCsv(totalValue),
+          escapeCsv(r.warehouse_name || "-"),
+          escapeCsv(r.due_date || "-"),
+          escapeCsv(r.receiver || r.department || "-"),
+          escapeCsv(r.receipt_number || "N/A"),
+          escapeCsv(serialUsage),
+          escapeCsv(r.note || "-")
+        ].join(",");
+      });
+      
+      const csvContent = "\ufeff" + [headers.join(","), ...csvRows].join("\n");
+      
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename=movements_full_${filenameDate}.csv`);
+      res.send(csvContent);
+    });
   });
 });
 

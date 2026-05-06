@@ -128,7 +128,7 @@ function renderSparePartsTable(data) {
           <td class="col-name">${escapeHtml(p.name)}</td>
           <td>${escapeHtml(p.part_no)}</td>
           <td class="col-desc">${escapeHtml(p.description || "")}</td>
-          <td class="text-center col-qty">${p.quantity}</td>
+          <td class="text-center col-qty">${p.quantity} ${escapeHtml(p.unit_type || '')}</td>
           <td class="serial-status-cell">${serialSummary}</td>
           <td class="cell-price text-center col-price">${p.price ?? ""}</td>
           <td class="col-warehouse">${escapeHtml(p.warehouse_name || "-")}</td>

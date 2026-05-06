@@ -31,7 +31,15 @@
         <button class="btn btn-info" onclick="setMovementType('RETURN')" data-i18n="return">Return</button>
         <button class="btn btn-transfer" onclick="setMovementType('TRANSFER')" data-role-required="admin,co-admin" data-i18n="transfer">Transfer</button>
       </div>
-      <button id="export-movements" class="btn btn-success" data-i18n="exportCSV">Export CSV</button>
+      <div class="export-actions" style="display: flex; gap: 8px; align-items: center; background: #f8fafc; padding: 6px 12px; border-radius: 8px; border: 1px solid #e2e8f0;">
+        <span style="font-size: 12px; font-weight: 600; color: #64748b;" data-i18n="startDate">Start:</span>
+        <input type="date" id="export-start-date" class="form-control" style="padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; cursor: pointer;" title="Start date">
+        
+        <span style="font-size: 12px; font-weight: 600; color: #64748b;" data-i18n="endDate">End:</span>
+        <input type="date" id="export-end-date" class="form-control" style="padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px; cursor: pointer;" title="End date">
+        
+        <button id="export-movements" class="btn btn-success" data-i18n="exportCSV" style="padding: 8px 16px; margin-left: 4px;">Export CSV</button>
+      </div>
     </div>
 
     <div class="margin-bottom-24">
@@ -153,9 +161,16 @@
           </div>
 
           <!-- Row 3: Tracking -->
-          <div class="stacked-form-group">
-            <label data-i18n="receiver" for="receiver">Receiver</label>
-            <input type="text" id="receiver" required placeholder="Receiver name" title="Receiver">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="stacked-form-group">
+              <label data-i18n="issuer" for="receiver">Issuer</label>
+              <input type="text" id="receiver" required placeholder="Issuer name" title="Issuer">
+            </div>
+
+            <div class="stacked-form-group">
+              <label data-i18n="receiver" for="receiver_name">Receiver</label>
+              <input type="text" id="receiver_name" required placeholder="Receiver name" title="Receiver">
+            </div>
           </div>
 
           <div class="stacked-form-group">
@@ -210,6 +225,7 @@
             <th data-i18n="unitPriceUsed">Unit Price Used</th>
             <th data-i18n="warehouseHeader">Warehouse</th>
             <th data-i18n="dueDate">Due Date</th>
+            <th data-i18n="issuer">Issuer</th>
             <th data-i18n="receiver">Receiver</th>
             <th data-i18n="receiptNumber">Request Number</th>
             <th data-i18n="serialUsage">SP No Usage</th>

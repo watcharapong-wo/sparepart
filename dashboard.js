@@ -98,13 +98,23 @@ async function loadDashboard() {
       document.getElementById("stock-out").innerText = movements.filter(m => m.movement_type === "OUT").length;
       document.getElementById("recent-movements-count").innerText = movements.length;
 
-      // Recent Movements Table
+      // 1. Calculate Monthly Movements (Move outside the if block to be accessible by stats)
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const currentMonthKey = `${year}-${month}`; // e.g. "2026-05"
+      
+      const thisMonthMovements = movements.filter(m => 
+        String(m.movement_date || "").startsWith(currentMonthKey)
+      );
+
+      // 2. Render Recent Movements Table
       const tableBody = document.querySelector("#recent-movements tbody");
       if (tableBody) {
-        tableBody.innerHTML = movements.slice(0, 5).map(m => `
+        tableBody.innerHTML = thisMonthMovements.map(m => `
           <tr>
             <td>${formatDate(m.movement_date)}</td>
-            <td>${escapeHtml(m.movement_type)} ${m.quantity}</td>
+            <td>${escapeHtml(m.movement_type)} ${m.quantity} ${escapeHtml(m.unit_type || '')}</td>
             <td>${escapeHtml(m.part_name || '-')}</td>
             <td>${escapeHtml(m.partType || m.part_no || '-')}</td>
             <td>${escapeHtml(m.note || m.department || m.receiver || '-')}</td>
@@ -114,33 +124,42 @@ async function loadDashboard() {
         `).join('');
       }
 
-      // Charts
+      // 3. Calculate and Update Stats
+      const monthlyConsumedValue = thisMonthMovements
+        .filter(m => ["OUT", "BORROW"].includes(m.movement_type))
+        .reduce((sum, m) => sum + (Number(m.quantity || 0) * Number(m.price || 0)), 0);
+
+      const monthlyConsumedQty = thisMonthMovements
+        .filter(m => ["OUT", "BORROW"].includes(m.movement_type))
+        .reduce((sum, m) => sum + Number(m.quantity || 0), 0);
+
+      const elExp = document.getElementById("total-expense");
+      const elOut = document.getElementById("total-out");
+      const elConsumedValue = document.getElementById("total-consumed-value");
+      
+      if (elExp) elExp.innerText = monthlyConsumedValue.toLocaleString();
+      if (elOut) elOut.innerText = monthlyConsumedQty.toLocaleString();
+      if (elConsumedValue) elConsumedValue.innerText = "฿" + monthlyConsumedValue.toLocaleString();
+
+      // 3.5. Update Latest Withdrawer
+      const elLatestUser = document.getElementById("latest-withdrawer");
+      const elLatestLabel = document.getElementById("latest-item-label");
+      if (elLatestUser && movements.length > 0) {
+        const latestWithdraw = movements.find(m => ["OUT", "BORROW"].includes(m.movement_type));
+        if (latestWithdraw) {
+          elLatestUser.innerText = latestWithdraw.receiver_name || latestWithdraw.username || "Unknown";
+          const lastLabel = typeof i18nText === "function" ? i18nText("lastWithdrawal", "Last") : "Last";
+          elLatestLabel.innerText = `${lastLabel}: ${latestWithdraw.part_name || 'Part'} (${latestWithdraw.quantity} ${latestWithdraw.unit_type || ''})`;
+        }
+      }
+
+      // 4. Render Charts & Insights
       if (trends) renderTrendChart(trends);
       if (monthlyData) renderMonthlyChart(monthlyData);
       if (warehouseValue) renderWarehouseChart(warehouseValue);
       if (accountData) renderAccountChart(accountData, warehouseId);
 
       loadInsights(warehouseId);
-
-      // Populate Expense & Out Stats
-      let totalExp = 0;
-      let totalQty = 0;
-
-      if (warehouseId === 'all') {
-        totalExp = (expensesByWarehouse || []).reduce((sum, w) => sum + (w.total_expense || 0), 0);
-        totalQty = (expensesByWarehouse || []).reduce((sum, w) => sum + (w.total_qty || 0), 0);
-      } else {
-        const wh = (expensesByWarehouse || []).find(w => String(w.warehouse_name) === String(getSelectedWarehouseName()));
-        totalExp = wh?.total_expense || 0;
-        totalQty = wh?.total_qty || 0;
-      }
-
-      const elExp = document.getElementById("total-expense");
-      const elOut = document.getElementById("total-out");
-      const elConsumed = document.getElementById("total-consumed-value");
-      if (elExp) elExp.innerText = totalExp.toLocaleString();
-      if (elOut) elOut.innerText = totalQty.toLocaleString();
-      if (elConsumed) elConsumed.innerText = "฿" + totalExp.toLocaleString();
 
       // NEW: Load high-level stats and usage charts
       loadParts();
@@ -509,7 +528,7 @@ async function loadInsights(warehouseId) {
           <div class="mini-row" style="flex-direction:column; align-items:stretch; gap:2px; padding:8px 4px; border-bottom:1px solid var(--border-color);">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <span style="font-weight:600;">${p.name} <small class="text-muted">(${p.partType || p.part_no})</small></span>
-              <span class="mini-qty" style="white-space:nowrap;">${p.total_consumed} ${i18nText("issued", "issued")}</span>
+              <span class="mini-qty" style="white-space:nowrap;">${p.total_consumed} ${escapeHtml(p.unit_type || '')} ${i18nText("issued", "issued")}</span>
             </div>
             <div style="display:flex; justify-content:space-between;">
               <span style="font-size:11px; color:var(--text-muted);">${unitPriceText}</span>
@@ -529,7 +548,7 @@ async function loadInsights(warehouseId) {
         <tr>
           <td>${i + 1}</td>
           <td>${escapeHtml(p.name)} <small class="text-muted">(${p.partType || p.part_no})</small></td>
-          <td><strong>${p.total_consumed}</strong></td>
+          <td><strong>${p.total_consumed} ${escapeHtml(p.unit_type || '')}</strong></td>
           <td style="color:var(--primary); font-weight:600;">฿${val.toLocaleString()}</td>
         </tr>`;
       }).join("");
@@ -544,7 +563,7 @@ async function loadInsights(warehouseId) {
         return `
         <tr>
           <td>${escapeHtml(p.name || '-')}</td>
-          <td class="text-danger"><strong>${p.quantity}</strong></td>
+          <td class="text-danger"><strong>${p.quantity} ${escapeHtml(p.unit_type || '')}</strong></td>
           <td style="color:var(--primary); font-weight:600;">${valText}</td>
           <td>${escapeHtml(p.warehouse_name || '-')}</td>
         </tr>`;
@@ -556,7 +575,7 @@ async function loadInsights(warehouseId) {
       lowStockInsightsTable.innerHTML = (data.lowStock || []).map((p) => `
         <tr>
           <td>${escapeHtml(p.partType || p.part_no || '-')}</td>
-          <td class="text-danger"><strong>${p.quantity}</strong></td>
+          <td class="text-danger"><strong>${p.quantity} ${escapeHtml(p.unit_type || '')}</strong></td>
           <td>${escapeHtml(p.warehouse_name || '-')}</td>
         </tr>
       `).join("");
@@ -582,7 +601,7 @@ async function loadInsights(warehouseId) {
         <tr>
           <td>${p.partType || p.part_no}</td>
           <td>${p.name}</td>
-          <td><strong>${p.quantity ?? 0}</strong></td>
+          <td><strong>${p.quantity ?? 0} ${escapeHtml(p.unit_type || '')}</strong></td>
           <td>${Number(p.stock_value || 0).toLocaleString()}</td>
           <td class="text-danger">${p.last_movement ? new Date(p.last_movement).toLocaleDateString(currentLang === 'th' ? 'th-TH' : 'en-US') : i18nText("never", "Never")}</td>
         </tr>
@@ -595,21 +614,48 @@ async function loadInsights(warehouseId) {
 
 
 async function exportInventory() {
-  const token = localStorage.getItem("token");
   const warehouseId = document.getElementById("warehouse-filter")?.value || 'all';
-  const url = `/export/inventory?warehouseId=${warehouseId}`;
+  const token = localStorage.getItem("token");
+  const url = `/spareparts?warehouseId=${warehouseId}`;
   
   try {
     const response = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!response.ok) throw new Error("Export failed");
-    
-    const blob = await response.blob();
+    const data = await response.json();
+    const parts = Array.isArray(data) ? data : (data.parts || []);
+
+    if (parts.length === 0) {
+      if (typeof showToast === "function") showToast("No data to export", "warning");
+      return;
+    }
+
+    const headers = ["Part No", "Name", "Description (Part Type)", "Quantity", "Unit", "Price", "Warehouse"];
+    const csvRows = parts.map(p => {
+      const escapeCsv = (val) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+      return [
+        escapeCsv(p.part_no),
+        escapeCsv(p.name),
+        escapeCsv(p.description),
+        escapeCsv(p.quantity),
+        escapeCsv(p.unit_type || "PC"),
+        escapeCsv(p.price || 0),
+        escapeCsv(p.warehouse_name || "-")
+      ].join(",");
+    });
+
+    const csvContent = "\ufeff" + [headers.join(","), ...csvRows].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const downloadUrl = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = downloadUrl;
-    a.download = `inventory-${warehouseId}-${new Date().toISOString().split('T')[0]}.csv`;
+    
+    const now = new Date();
+    const dateStr = now.getFullYear() + "_" + (now.getMonth() + 1) + "_" + now.getDate();
+    const timeStr = now.getHours() + "h" + now.getMinutes() + "m";
+    a.download = `inventory_${warehouseId}_${dateStr}_${timeStr}.csv`;
+    
     document.body.appendChild(a);
     a.click();
     a.remove();

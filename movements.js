@@ -189,9 +189,34 @@ document.getElementById("add-to-cart-btn")?.addEventListener("click", function()
             showToast(`Registered SP No count (${newSerials.length}) must match quantity (${qty}).`, "error");
             return;
         }
-    } else if (isShowingStockSerials && !isPack && movementType !== "TRANSFER") {
-        if (selectedSerials.length !== qty) {
-            showToast(`Selected SP No count (${selectedSerials.length}) must match quantity (${qty}).`, "error");
+    } else if (isShowingStockSerials) {
+        // Updated: Allow selecting one or more SP numbers for any quantity, 
+        // provided at least one is selected. The backend will handle the allocation.
+        if (selectedSerials.length === 0) {
+            showToast("Please select at least one SP No", "error");
+            return;
+        }
+
+        // Special rule for PACK units (PAC/BOX): 
+        // Number of selected SP Nos must not be less than the number of packs requested.
+        if (isPack) {
+            const convRate = Math.max(1, Number(currentSelectedPart.conversion_rate) || 1);
+            const requestedPacks = Math.ceil(qty / convRate);
+            if (selectedSerials.length < requestedPacks) {
+                showToast(`For ${requestedPacks} PAC/BOX, you must select at least ${requestedPacks} SP No(s).`, "error");
+                return;
+            }
+        }
+        
+        // General check: total available in selected serials must be enough
+        let totalAvailable = 0;
+        selectedSerials.forEach(s => {
+            const row = existingSerialRows.find(r => Number(r.id) === Number(s.id));
+            if (row) totalAvailable += (Number(row.remaining_qty) || 0);
+        });
+        
+        if (totalAvailable < qty) {
+            showToast(`Selected SP No(s) only have ${totalAvailable} items available, but ${qty} requested.`, "error");
             return;
         }
     }
@@ -202,27 +227,28 @@ document.getElementById("add-to-cart-btn")?.addEventListener("click", function()
         partType: currentSelectedPart.partType || currentSelectedPart.part_no,
         type: movementType,
         quantity: qty,
+        unitType: document.getElementById("unit-type")?.value || currentSelectedPart.unit_type,
         serialIds: selectedSerials.map(s => s.id),
         newSerials: newSerials,
         serialNos: movementType === "IN" ? newSerials : selectedSerials.map(s => s.no),
         price: document.getElementById("price-unit")?.value || null,
         due_date: document.getElementById("due-date")?.value || null,
         department: document.getElementById("reason-select")?.value || 'INTERNAL',
+        warehouse: currentSelectedPart.warehouse_name || "-",
         target_warehouse: document.getElementById("target-warehouse-select")?.value || null
     });
 
-    const searchInput = document.getElementById("part-search-input");
-    // Reset everything for next item, but keep search text for visual confirmation
-    resetPartSelectionState({ preserveSearchText: true });
-    
-    // Highlight the search input so they see what they added
-    if (searchInput) {
-        searchInput.style.backgroundColor = "#f0fdf4"; // Subtle green
-        setTimeout(() => { searchInput.style.backgroundColor = ""; }, 1500);
-    }
+    // Completely reset for next item - clear everything including search
+    resetPartSelectionState({ preserveSearchText: false });
     
     renderCartTable();
     showToast(i18nText("itemAddedToList", "Added item to list"), "success");
+    
+    // Focus back to search input for next part
+    const searchInput = document.getElementById("part-search-input");
+    if (searchInput) {
+        searchInput.focus();
+    }
 });
 
 function findExistingSerialConflicts(serialLines) {
@@ -548,16 +574,12 @@ async function fetchSerials(partId) {
         `;
       }).join("");
 
-      if (isPackUnit) {
-        qtyInput.readOnly = false;
-        if (!qtyInput.value || Number(qtyInput.value) < 1) qtyInput.value = "";
-        serialWarning.textContent = "Please select SP no to use, then enter quantity in pieces.";
-        setSectionVisible(serialWarning, true, "block");
-      } else {
-        qtyInput.readOnly = true;
-        qtyInput.value = 0;
-        setSectionVisible(serialWarning, false);
-      }
+      // Updated: Always allow manual quantity entry if SP no exists, 
+      // so users can take multiple pieces from a single SP no (like RJ45)
+      qtyInput.readOnly = false;
+      if (!qtyInput.value || Number(qtyInput.value) < 1) qtyInput.value = "";
+      serialWarning.textContent = "Please select SP no to use, then enter quantity.";
+      setSectionVisible(serialWarning, true, "block");
     } else {
       serialList.innerHTML = "";
       qtyInput.readOnly = false;
@@ -575,9 +597,8 @@ function updateSelectedSerialsCount() {
   const countDisplay = document.getElementById("selected-count");
   const qtyInput = document.getElementById("quantity");
   if (countDisplay) countDisplay.textContent = checkboxes.length;
-  if (qtyInput && qtyInput.readOnly && document.getElementById("movement-type").value !== "IN") {
-    qtyInput.value = checkboxes.length;
-  }
+  // Updated: Removed auto-syncing qtyInput.value to checkboxes.length 
+  // to allow users to manually specify quantity for any selected SP no.
 }
 
 function updateInSerialsCount() {
@@ -1123,19 +1144,35 @@ async function loadReasons() {
   }
 }
 
-async function loadMovements() {
+async function loadMovements(startDate = "", endDate = "") {
   try {
     const token = localStorage.getItem("token");
     const tbody = document.getElementById("movements-table")?.getElementsByTagName("tbody")[0];
     if (!tbody) return;
     tbody.innerHTML = `<tr><td colspan="13" class="table-loading-state"><div class="spinner"></div>${i18nText("loadingHistory", "Loading history...")}</td></tr>`;
 
-    allMovements = await fetchData("/report/movements3", token);
+    let url = "/report/movements3";
+    const params = [];
+    if (startDate) params.push(`startDate=${startDate}`);
+    if (endDate) params.push(`endDate=${endDate}`);
+    if (params.length > 0) url += `?${params.join("&")}`;
+    
+    allMovements = await fetchData(url, token);
     displayMovements(allMovements);
   } catch (err) {
     console.error("Failed to load movements", err);
   }
 }
+
+document.getElementById("export-start-date")?.addEventListener("change", function() {
+  const end = document.getElementById("export-end-date")?.value || "";
+  loadMovements(this.value, end);
+});
+
+document.getElementById("export-end-date")?.addEventListener("change", function() {
+  const start = document.getElementById("export-start-date")?.value || "";
+  loadMovements(start, this.value);
+});
 
 function displayMovements(data) {
     const tbody = document.getElementById("movements-table")?.getElementsByTagName("tbody")[0];
@@ -1172,7 +1209,7 @@ function displayMovements(data) {
 
         row.insertCell(3).textContent = m.part_name || "-";
         row.insertCell(4).textContent = m.partType || m.part_no || "-";
-        row.insertCell(5).textContent = m.quantity;
+        row.insertCell(5).textContent = `${m.quantity} ${m.unit_type || ''}`;
         
         // Unit Price Used Cell
         const priceUsed = Number(m.price || 0);
@@ -1181,9 +1218,10 @@ function displayMovements(data) {
         row.insertCell(7).textContent = m.department || "-";
         row.insertCell(8).textContent = formatDate(m.due_date);
         row.insertCell(9).textContent = m.receiver || "-";
-        row.insertCell(10).textContent = m.receipt_number || "-";
-        row.insertCell(11).textContent = m.serial_usage || "-";
-        const noteCell = row.insertCell(12);
+        row.insertCell(10).textContent = m.receiver_name || "-";
+        row.insertCell(11).textContent = m.receipt_number || "-";
+        row.insertCell(12).textContent = m.serial_usage || "-";
+        const noteCell = row.insertCell(13);
         if (m.correction_of) {
           noteCell.textContent = `${m.note || "-"} (Correction of #${m.correction_of})`;
         } else {
@@ -1229,6 +1267,7 @@ document.getElementById("movement-form").addEventListener("submit", async functi
   
   const submitBtn = document.getElementById("submit-all-btn");
   const receiver = document.getElementById("receiver").value.trim();
+  const receiver_name = document.getElementById("receiver_name").value.trim();
   const receiptNumber = document.getElementById("receipt-number").value.trim();
   const note = document.getElementById("note").value.trim();
 
@@ -1237,8 +1276,8 @@ document.getElementById("movement-form").addEventListener("submit", async functi
       return;
   }
 
-  if (!receiver || !receiptNumber) {
-      showToast("Please enter Receiver and Request Number", "warning");
+  if (!receiver || !receiver_name || !receiptNumber) {
+      showToast("Please enter Issuer, Receiver and Request Number", "warning");
       return;
   }
 
@@ -1256,12 +1295,14 @@ document.getElementById("movement-form").addEventListener("submit", async functi
             quantity: item.quantity,
             department: item.department,
             receiver: receiver,
+            receiver_name: receiver_name,
             receipt_number: receiptNumber,
             note: note,
             due_date: item.due_date,
             serial_ids: item.serialIds,
             new_serials: item.newSerials,
-            price: item.price
+            price: item.price,
+            unit_type: item.unitType
         };
 
         if (item.type === "TRANSFER") {
@@ -1292,10 +1333,14 @@ document.getElementById("movement-form").addEventListener("submit", async functi
                 partName: it.partName,
                 partType: it.partType,
                 quantity: it.quantity,
+                unitType: it.unitType,
+                warehouse: it.warehouse,
                 serialNos: Array.isArray(it.serialNos) ? it.serialNos.join(", ") : String(it.serialNos || "-")
             })),
             receiver,
+            receiver_name,
             department: firstItem.department || "-",
+            warehouse: firstItem.warehouse,
             requestNumber: receiptNumber,
             note
         }, token);
@@ -1439,10 +1484,23 @@ document.getElementById("serial-lookup-input")?.addEventListener("keypress", asy
 
 // Initial Load
 async function initMovementsPage() {
-  await loadParts();
-  await loadReasons();
-  applyFilters();
-  await loadMovements();
+    const startFilter = document.getElementById("export-start-date");
+    const endFilter = document.getElementById("export-end-date");
+    
+    if (startFilter && endFilter && !startFilter.value) {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        
+        startFilter.value = `${year}-${month}-01`;
+        endFilter.value = `${year}-${month}-${day}`;
+    }
+    
+    await loadParts();
+    await loadReasons();
+    applyFilters();
+    await loadMovements(startFilter?.value || "", endFilter?.value || "");
 
   const currentType = document.getElementById("movement-type")?.value || "OUT";
   const dueDateGroup = document.getElementById("due-date-group");
@@ -1533,26 +1591,69 @@ window.addEventListener('languageChanged', () => {
 
 const exportBtn = document.getElementById("export-movements");
 if (exportBtn) {
-  exportBtn.addEventListener("click", async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const url = `/export/movements?warehouseId=all`;
-
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error("Export failed");
-
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = `movements-${new Date().toISOString().split("T")[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch (err) {
-      showToast("Export failed: " + err.message, "error");
+  exportBtn.addEventListener("click", () => {
+    if (!allMovements || allMovements.length === 0) {
+      showToast("No data to export", "error");
+      return;
     }
+
+    const headers = [
+      "Date", "Type", "Return Status", "Part Name", "Part Type", "Quantity", 
+      "Unit Price Used", "Warehouse", "Due Date", "Issuer", "Receiver", 
+      "Request Number", "SP No Usage", "Note"
+    ];
+
+    const csvRows = allMovements.map(m => {
+      const escapeCsv = (val) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+      const date = formatDate(m.movement_date);
+      const type = m.movement_type || "";
+      const returnStatus = m.return_status || "N/A";
+      const partName = m.part_name || "-";
+      const partType = m.description || m.part_no || "-";
+      const qty = `${m.quantity} ${m.unit_type || ""}`.trim();
+      const price = m.price || 0;
+      const warehouse = m.department || "-";
+      const dueDate = m.due_date ? new Date(m.due_date).toLocaleDateString() : "-";
+      const issuer = m.receiver || "-";
+      const receiver = m.receiver_name || "-";
+      const reqNo = m.receipt_number || "N/A";
+      const spUsage = m.serial_usage || "-";
+      const note = m.note || "-";
+
+      return [
+        escapeCsv(date),
+        escapeCsv(type),
+        escapeCsv(returnStatus),
+        escapeCsv(partName),
+        escapeCsv(partType),
+        escapeCsv(qty),
+        escapeCsv(price),
+        escapeCsv(warehouse),
+        escapeCsv(dueDate),
+        escapeCsv(issuer),
+        escapeCsv(receiver),
+        escapeCsv(reqNo),
+        escapeCsv(spUsage),
+        escapeCsv(note)
+      ].join(",");
+    });
+
+    const csvContent = "\ufeff" + [headers.join(","), ...csvRows].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const now = new Date();
+    
+    const start = document.getElementById("export-start-date")?.value || "start";
+    const end = document.getElementById("export-end-date")?.value || "end";
+    const dateStr = `${start}_to_${end}`;
+    const timeStr = now.getHours() + "h" + now.getMinutes() + "m";
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", `movements_export_${dateStr}_${timeStr}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   });
 }

@@ -16,7 +16,7 @@ function asText(value, fallback = '-') {
   return trimmed || fallback;
 }
 
-function buildNotificationContent({ type, titleText, partName, quantity, warehouse, user, receiver, department, sourceWarehouse, destinationWarehouse, serialNos, requestNumber, note, timestamp }) {
+function buildNotificationContent({ type, titleText, partName, quantity, warehouse, user, receiver, receiver_name, department, sourceWarehouse, destinationWarehouse, serialNos, requestNumber, note, timestamp }) {
   const summary = type === 'TRANSFER'
     ? `${titleText} | ${partName} | ${sourceWarehouse} -> ${destinationWarehouse} | Qty ${quantity}`
     : `${titleText} | ${partName} | Qty ${quantity}`;
@@ -34,7 +34,8 @@ function buildNotificationContent({ type, titleText, partName, quantity, warehou
   } else {
     lines.push(`Warehouse: ${warehouse}`);
     lines.push(`By: ${user}`);
-    lines.push(`Receiver: ${receiver}`);
+    lines.push(`Issuer: ${receiver}`);
+    lines.push(`Receiver: ${receiver_name}`);
     lines.push(`Dept: ${department}`);
   }
 
@@ -56,15 +57,17 @@ function buildNotificationContent({ type, titleText, partName, quantity, warehou
  * @param {string} params.partName - Name of the spare part
  * @param {number} params.quantity - Quantity moved
  * @param {string} params.user - User who performed the action
- * @param {string} params.receiver - Receiver of the part
+ * @param {string} params.receiver - Issuer of the part
+ * @param {string} params.receiver_name - Receiver of the part
  * @param {string} params.department - Department involved
  * @param {string} params.warehouse - Warehouse name
  * @param {string} params.sourceWarehouse - Source warehouse for transfers
  * @param {string} params.destinationWarehouse - Destination warehouse for transfers
  * @param {string} params.serialNos - List of serial numbers (SP no)
+ * @param {string} params.unitType - Unit type of the part (PC, M, BOX, etc.)
  * @param {string} params.note - Additional note
  */
-function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, department, warehouse, sourceWarehouse, destinationWarehouse, serialNos, spNo, requestNumber, note }) {
+function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, receiver_name, department, warehouse, sourceWarehouse, destinationWarehouse, serialNos, spNo, requestNumber, unitType, note }) {
   const normalizedType = normalizeNotificationType(type);
   if (!isSupportedNotificationType(normalizedType)) {
     console.log(`[TEAMS] Skip notification for type: ${type}`);
@@ -100,18 +103,22 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
     : normalizedType === 'DELETE'
     ? `🗑️ Spare Part Deleted`
     : `${typeEmoji} Stock Movement: ${normalizedType}`;
+  
+  const unitSuffix = unitType ? ` ${unitType}` : '';
   const timestamp = new Date().toLocaleString('th-TH');
   const payloadFields = {
     partName: asText(partName),
     quantity: Number(qtyValue || 0),
     user: asText(user, 'System'),
     receiver: asText(receiver),
+    receiver_name: asText(receiver_name),
     department: asText(department),
     warehouse: asText(warehouse),
     sourceWarehouse: asText(sourceWarehouse),
     destinationWarehouse: asText(destinationWarehouse),
     serialNos: asText(serialValue),
     requestNumber: asText(requestNumber),
+    unitType: asText(unitType, ''),
     note: asText(note),
     timestamp: asText(timestamp)
   };
@@ -129,9 +136,10 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
         summary: notificationContent.summary,
         message: notificationContent.message,
         partName: payloadFields.partName,
-        quantity: payloadFields.quantity,
+        quantity: `${payloadFields.quantity}${unitSuffix}`,
         user: payloadFields.user,
         receiver: payloadFields.receiver,
+        receiver_name: payloadFields.receiver_name,
         department: payloadFields.department,
         warehouse: payloadFields.warehouse,
         sourceWarehouse: payloadFields.sourceWarehouse,
@@ -161,10 +169,11 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
                   type: "FactSet",
                   facts: [
                     { title: "Part:", value: payloadFields.partName },
-                    { title: "Qty:", value: String(payloadFields.quantity) },
+                    { title: "Qty:", value: `${payloadFields.quantity}${unitSuffix}` },
                     { title: "Warehouse:", value: payloadFields.warehouse },
                     { title: "By:", value: payloadFields.user },
-                    { title: "Receiver:", value: payloadFields.receiver },
+                    { title: "Issuer:", value: payloadFields.receiver },
+                    { title: "Receiver:", value: payloadFields.receiver_name },
                     { title: "Dept:", value: payloadFields.department },
                     { title: "Request No:", value: payloadFields.requestNumber },
                     { title: "SP No:", value: payloadFields.serialNos },
@@ -218,7 +227,7 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
   req.end();
 }
 
-function sendBatchNotification({ type, items, user, receiver, department, warehouse, requestNumber, note, sourceWarehouse, destinationWarehouse }) {
+function sendBatchNotification({ type, items, user, receiver, receiver_name, department, warehouse, requestNumber, note, sourceWarehouse, destinationWarehouse }) {
   const normalizedType = normalizeNotificationType(type);
   const webhookUrl = process.env.TEAMS_WEBHOOK_URL;
   if (!webhookUrl) return;
@@ -235,7 +244,9 @@ function sendBatchNotification({ type, items, user, receiver, department, wareho
   let itemsAsText = items.map((item, idx) => {
     const isLow = Number(item.remainingQty) <= 3;
     const lowWarning = isLow ? ` ⚠️ (LOW STOCK: ${item.remainingQty} rem.)` : "";
-    return `${idx + 1}. [${item.partType || '-'}] ${item.partName} - Qty: ${item.quantity} (${item.serialNos || '-'})${lowWarning}`;
+    const whPrefix = item.warehouse ? `[${item.warehouse}] ` : "";
+    const unitSfx = item.unitType ? ` ${item.unitType}` : "";
+    return `${idx + 1}. ${whPrefix}[${item.partType || '-'}] ${item.partName} - Qty: ${item.quantity}${unitSfx} (${item.serialNos || '-'})${lowWarning}`;
   }).join('\n');
 
   const allSerialNos = items
@@ -247,9 +258,12 @@ function sendBatchNotification({ type, items, user, receiver, department, wareho
     partName: items.length === 1 
       ? `[${items[0].partType || '-'}] ${items[0].partName}`
       : `Multiple Items Request (${items.length} parts)`,
-    quantity: items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0),
+    quantity: items.length === 1 
+      ? `${items[0].quantity} ${items[0].unitType || 'PC'}`
+      : items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0),
     user: user || 'System',
-    receiver: receiver || '-',
+    receiver: receiver || '-', // Issuer
+    receiver_name: receiver_name || '-', // Receiver
     department: department || '-',
     warehouse: warehouse || sourceWarehouse || '-',
     serialNos: allSerialNos || "-",
@@ -278,7 +292,8 @@ function sendBatchNotification({ type, items, user, receiver, department, wareho
               { type: "TextBlock", text: titleText, weight: "Bolder", size: "Large", color: "Accent" },
               { type: "FactSet", facts: [
                 { title: "By:", value: payloadFields.user },
-                { title: "Receiver:", value: payloadFields.receiver },
+                { title: "Issuer:", value: payloadFields.receiver },
+                { title: "Receiver:", value: payloadFields.receiver_name },
                 { title: "Request No:", value: payloadFields.requestNumber },
                 { title: "Warehouse:", value: payloadFields.warehouse }
               ]},
