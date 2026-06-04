@@ -131,6 +131,7 @@ function renderSparePartsTable(data) {
           <td class="text-center col-qty">${p.quantity} ${escapeHtml(p.unit_type || '')}</td>
           <td class="serial-status-cell">${serialSummary}</td>
           <td class="cell-price text-center col-price">${p.price ?? ""}</td>
+          <td class="text-center" style="color:var(--primary); font-weight:600;">${(Number(p.quantity || 0) * Number(p.price || 0)).toLocaleString()}</td>
           <td class="col-warehouse">${escapeHtml(p.warehouse_name || "-")}</td>
           <td class="actions-cell text-center">
             <div class="row-actions">
@@ -146,7 +147,7 @@ function renderSparePartsTable(data) {
         tbody.appendChild(tr);
       });
     } else {
-      showTableEmptyState(document.getElementById("spareparts-table"), 10, "No Spare Parts", "📦");
+      showTableEmptyState(document.getElementById("spareparts-table"), 11, "No Spare Parts", "📦");
     }
     if (typeof applyTranslations === "function") applyTranslations();
     if (typeof checkPermissions === "function") checkPermissions();
@@ -199,6 +200,7 @@ async function editPart(id) {
       </div>
     </td>
     <td><input type="number" id="edit-price-${id}" value="${part.price ?? 0}" style="width:70px;"></td>
+    <td class="text-center text-muted" style="font-size: 12px;">-</td>
     <td>${escapeHtml(part.warehouse_name || "-")}</td>
     <td></td>
   `;
@@ -207,7 +209,7 @@ async function editPart(id) {
   const actionRow = document.createElement("tr");
   actionRow.id = `edit-actions-${id}`;
   actionRow.innerHTML = `
-    <td colspan="9" style="padding: 0;">
+    <td colspan="11" style="padding: 0;">
       <div style="padding: 8px 10px; display: flex; gap: 8px;">
         <button onclick="saveInlineEdit(${id})" class="btn btn-sm btn-success" data-i18n="save">Save</button>
         <button onclick="cancelEdit(${id})" class="btn btn-sm btn-secondary" data-i18n="cancel">Cancel</button>
