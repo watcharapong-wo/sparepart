@@ -420,6 +420,7 @@ document.addEventListener("DOMContentLoaded", () => {
       UnitType: item.unit_type || "PC",
       ConversionRate: item.conversion_rate || 1,
       Price: item.price,
+      "Total Value": (Number(item.quantity || 0) * Number(item.price || 0)),
       Warehouse: item.warehouse_name || "-"
     }));
     exportToCSV(data, "spare_parts_export.csv");
