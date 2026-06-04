@@ -99,11 +99,11 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
   const titleText = normalizedType === 'LOW_STOCK'
     ? `⚠️ CRITICAL: Low Stock Alert!`
     : normalizedType === 'REMINDER'
-    ? `⏰ OVERDUE REMINDER: Return Required`
-    : normalizedType === 'DELETE'
-    ? `🗑️ Spare Part Deleted`
-    : `${typeEmoji} Stock Movement: ${normalizedType}`;
-  
+      ? `⏰ OVERDUE REMINDER: Return Required`
+      : normalizedType === 'DELETE'
+        ? `🗑️ Spare Part Deleted`
+        : `${typeEmoji} Stock Movement: ${normalizedType}`;
+
   const unitSuffix = unitType ? ` ${unitType}` : '';
   const timestamp = new Date().toLocaleString('th-TH');
   const payloadFields = {
@@ -130,62 +130,62 @@ function sendTeamsNotification({ type, partName, quantity, qty, user, receiver, 
   // Direct Teams incoming webhooks expect type=message + attachments.
   const payload = isPowerAutomateWebhook
     ? {
-        type: String(normalizedType || 'UNKNOWN'),
-        eventType: String(normalizedType || 'UNKNOWN'),
-        title: titleText,
-        summary: notificationContent.summary,
-        message: notificationContent.message,
-        partName: payloadFields.partName,
-        quantity: `${payloadFields.quantity}${unitSuffix}`,
-        user: payloadFields.user,
-        receiver: payloadFields.receiver,
-        receiver_name: payloadFields.receiver_name,
-        department: payloadFields.department,
-        warehouse: payloadFields.warehouse,
-        sourceWarehouse: payloadFields.sourceWarehouse,
-        destinationWarehouse: payloadFields.destinationWarehouse,
-        serialNos: payloadFields.serialNos,
-        requestNumber: payloadFields.requestNumber,
-        note: payloadFields.note,
-        timestamp: payloadFields.timestamp
-      }
+      type: String(normalizedType || 'UNKNOWN'),
+      eventType: String(normalizedType || 'UNKNOWN'),
+      title: titleText,
+      summary: notificationContent.summary,
+      message: notificationContent.message,
+      partName: payloadFields.partName,
+      quantity: `${payloadFields.quantity}${unitSuffix}`,
+      user: payloadFields.user,
+      receiver: payloadFields.receiver,
+      receiver_name: payloadFields.receiver_name,
+      department: payloadFields.department,
+      warehouse: payloadFields.warehouse,
+      sourceWarehouse: payloadFields.sourceWarehouse,
+      destinationWarehouse: payloadFields.destinationWarehouse,
+      serialNos: payloadFields.serialNos,
+      requestNumber: payloadFields.requestNumber,
+      note: payloadFields.note,
+      timestamp: payloadFields.timestamp
+    }
     : {
-        type: "message",
-        attachments: [
-          {
-            contentType: "application/vnd.microsoft.card.adaptive",
-            content: {
-              $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-              type: "AdaptiveCard",
-              version: "1.4",
-              body: [
-                {
-                  type: "TextBlock",
-                  text: titleText,
-                  weight: "Bolder",
-                  size: "Medium"
-                },
-                {
-                  type: "FactSet",
-                  facts: [
-                    { title: "Part:", value: payloadFields.partName },
-                    { title: "Qty:", value: `${payloadFields.quantity}${unitSuffix}` },
-                    { title: "Warehouse:", value: payloadFields.warehouse },
-                    { title: "By:", value: payloadFields.user },
-                    { title: "Issuer:", value: payloadFields.receiver },
-                    { title: "Receiver:", value: payloadFields.receiver_name },
-                    { title: "Dept:", value: payloadFields.department },
-                    { title: "Request No:", value: payloadFields.requestNumber },
-                    { title: "SP No:", value: payloadFields.serialNos },
-                    { title: "Note:", value: payloadFields.note },
-                    { title: "Time:", value: payloadFields.timestamp }
-                  ]
-                }
-              ]
-            }
+      type: "message",
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: {
+            $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: [
+              {
+                type: "TextBlock",
+                text: titleText,
+                weight: "Bolder",
+                size: "Medium"
+              },
+              {
+                type: "FactSet",
+                facts: [
+                  { title: "Part:", value: payloadFields.partName },
+                  { title: "Qty:", value: `${payloadFields.quantity}${unitSuffix}` },
+                  { title: "Warehouse:", value: payloadFields.warehouse },
+                  { title: "By:", value: payloadFields.user },
+                  { title: "Issuer:", value: payloadFields.receiver },
+                  { title: "Receiver:", value: payloadFields.receiver_name },
+                  { title: "Dept:", value: payloadFields.department },
+                  { title: "Request No:", value: payloadFields.requestNumber },
+                  { title: "SP No:", value: payloadFields.serialNos },
+                  { title: "Note:", value: payloadFields.note },
+                  { title: "Time:", value: payloadFields.timestamp }
+                ]
+              }
+            ]
           }
-        ]
-      };
+        }
+      ]
+    };
 
   const body = JSON.stringify(payload);
   const parsedUrl = url.parse(webhookUrl);
@@ -255,10 +255,10 @@ function sendBatchNotification({ type, items, user, receiver, receiver_name, dep
     .join(", ");
 
   const payloadFields = {
-    partName: items.length === 1 
+    partName: items.length === 1
       ? `[${items[0].partType || '-'}] ${items[0].partName}`
       : `Multiple Items Request (${items.length} parts)`,
-    quantity: items.length === 1 
+    quantity: items.length === 1
       ? `${items[0].quantity} ${items[0].unitType || 'PC'}`
       : items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0),
     user: user || 'System',
@@ -274,37 +274,39 @@ function sendBatchNotification({ type, items, user, receiver, receiver_name, dep
 
   const payload = isPowerAutomateWebhook
     ? {
-        type: normalizedType,
-        eventType: normalizedType,
-        title: titleText,
-        message: `Batch submission by ${user}\nRequest No: ${requestNumber}\n\n${itemsAsText}`,
-        ...payloadFields
-      }
+      type: normalizedType,
+      eventType: normalizedType,
+      title: titleText,
+      message: `Batch submission by ${user}\nRequest No: ${requestNumber}\n\n${itemsAsText}`,
+      ...payloadFields
+    }
     : {
-        type: "message",
-        attachments: [{
-          contentType: "application/vnd.microsoft.card.adaptive",
-          content: {
-            $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-            type: "AdaptiveCard",
-            version: "1.4",
-            body: [
-              { type: "TextBlock", text: titleText, weight: "Bolder", size: "Large", color: "Accent" },
-              { type: "FactSet", facts: [
+      type: "message",
+      attachments: [{
+        contentType: "application/vnd.microsoft.card.adaptive",
+        content: {
+          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+          type: "AdaptiveCard",
+          version: "1.4",
+          body: [
+            { type: "TextBlock", text: titleText, weight: "Bolder", size: "Large", color: "Accent" },
+            {
+              type: "FactSet", facts: [
                 { title: "By:", value: payloadFields.user },
                 { title: "Issuer:", value: payloadFields.receiver },
                 { title: "Receiver:", value: payloadFields.receiver_name },
                 { title: "Request No:", value: payloadFields.requestNumber },
                 { title: "Warehouse:", value: payloadFields.warehouse }
-              ]},
-              { type: "TextBlock", text: "Items Details:", weight: "Bolder", spacing: "Medium" },
-              { type: "TextBlock", text: itemsAsText, wrap: true },
-              { type: "TextBlock", text: `Note: ${note}`, isSubtle: true, spacing: "Medium" },
-              { type: "TextBlock", text: `Time: ${timestamp}`, size: "Small", isSubtle: true }
-            ]
-          }
-        }]
-      };
+              ]
+            },
+            { type: "TextBlock", text: "Items Details:", weight: "Bolder", spacing: "Medium" },
+            { type: "TextBlock", text: itemsAsText, wrap: true },
+            { type: "TextBlock", text: `Note: ${note}`, isSubtle: true, spacing: "Medium" },
+            { type: "TextBlock", text: `Time: ${timestamp}`, size: "Small", isSubtle: true }
+          ]
+        }
+      }]
+    };
 
   const body = JSON.stringify(payload);
   const parsedUrl = url.parse(webhookUrl);

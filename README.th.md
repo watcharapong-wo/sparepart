@@ -175,4 +175,4 @@ powershell -ExecutionPolicy Bypass -File .\unregister_autostart_admin.ps1
 
 ## 📄 License
 
-โครงการนี้เป็นทรัพย์สินขององค์กรและพัฒนาโดย Watcharapong W. (IT Eng.) สำหรับ Hana Microelectronics Public Co., Ltd.
+โครงการนี้เป็นทรัพย์สินขององค์กรและพัฒนาโดย Watcharapong W. (IT MN Eng.) สำหรับ Hana Microelectronics Public Co., Ltd.

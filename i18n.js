@@ -165,6 +165,7 @@ const translations = {
     lowStockItems: "Critical Low Stock Items",
     totalValue: "Total Value",
     unitPriceUsed: "Unit Price Used",
+    totalPriceUsed: "Total Price Used",
     dashboardTitle: "Dashboard & Analytics",
     labelDescription: "Description",
     labelWarehouse: "Warehouse",
@@ -349,6 +350,7 @@ const translations = {
     labelPieceStock: "จำนวนหน่วยคงเหลือ",
     labelUnitPrice: "ราคาต่อหน่วย",
     unitPriceUsed: "มูลค่าต่อหน่วยที่ถูกเบิกใช้",
+    totalPriceUsed: "มูลค่ารวมที่ถูกเบิกใช้",
     labelPartRef: "รหัสอ้างอิง",
     scanLookupLabel: "🔍 สแกน/ค้นหา SP No (เลือก Part อัตโนมัติ)",
     scanLookupPlaceholder: "สแกนหรือพิมพ์ SP No เพื่อระบุอะไหล่..."

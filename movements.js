@@ -1149,7 +1149,7 @@ async function loadMovements(startDate = "", endDate = "") {
     const token = localStorage.getItem("token");
     const tbody = document.getElementById("movements-table")?.getElementsByTagName("tbody")[0];
     if (!tbody) return;
-    tbody.innerHTML = `<tr><td colspan="13" class="table-loading-state"><div class="spinner"></div>${i18nText("loadingHistory", "Loading history...")}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="15" class="table-loading-state"><div class="spinner"></div>${i18nText("loadingHistory", "Loading history...")}</td></tr>`;
 
     let url = "/report/movements3";
     const params = [];
@@ -1174,13 +1174,23 @@ document.getElementById("export-end-date")?.addEventListener("change", function(
   loadMovements(start, this.value);
 });
 
-function displayMovements(data) {
+let currentMovementsPage = 1;
+const movementsPerPage = 15;
+let currentFilteredMovements = [];
+
+function displayMovements(data, page = 1) {
+    currentFilteredMovements = data;
+    currentMovementsPage = page;
     const tbody = document.getElementById("movements-table")?.getElementsByTagName("tbody")[0];
     if (!tbody) return;
     tbody.innerHTML = "";
 
-    if (Array.isArray(data) && data.length > 0) {
-      data.forEach(m => {
+    const startIndex = (page - 1) * movementsPerPage;
+    const endIndex = startIndex + movementsPerPage;
+    const paginatedData = data.slice(startIndex, endIndex);
+
+    if (Array.isArray(paginatedData) && paginatedData.length > 0) {
+      paginatedData.forEach(m => {
         const row = tbody.insertRow();
         row.insertCell(0).textContent = formatDate(m.movement_date);
         const type = String(m.movement_type || "").toUpperCase();
@@ -1193,6 +1203,14 @@ function displayMovements(data) {
         typeCell.innerHTML = `<span class="${typeClass}">${i18nText(typeLabelKey, type)}</span>`;
         typeCell.className = `movement-type movement-${type.toLowerCase()}`;
         const revertCell = row.insertCell(2);
+        
+        // Hide return column for non-admin/co-admin to fix column alignment
+        const userRole = String(localStorage.getItem("role") || "").trim().toLowerCase().replace(/[_\s]+/g, "-");
+        const isAdmin = userRole === "admin" || userRole === "co-admin" || userRole === "coadmin";
+        if (!isAdmin) {
+          revertCell.style.display = "none";
+        }
+
         const isCorrection = Number(m.correction_of || 0) > 0;
         const hasCorrection = Number(m.has_correction || 0) > 0;
         const canCorrect = canCorrectMovements() && ["IN", "OUT", "BORROW", "RETURN"].includes(type);
@@ -1215,31 +1233,74 @@ function displayMovements(data) {
         const priceUsed = Number(m.price || 0);
         row.insertCell(6).textContent = priceUsed > 0 ? priceUsed.toLocaleString() : "-";
 
-        row.insertCell(7).textContent = m.department || "-";
-        row.insertCell(8).textContent = formatDate(m.due_date);
-        row.insertCell(9).textContent = m.receiver || "-";
-        row.insertCell(10).textContent = m.receiver_name || "-";
-        row.insertCell(11).textContent = m.receipt_number || "-";
-        row.insertCell(12).textContent = m.serial_usage || "-";
-        const noteCell = row.insertCell(13);
+        // Total Price Used Cell
+        const quantity = Number(m.quantity || 0);
+        const totalPrice = priceUsed * quantity;
+        row.insertCell(7).textContent = totalPrice > 0 ? totalPrice.toLocaleString() : "-";
+
+        row.insertCell(8).textContent = m.department || "-";
+        row.insertCell(9).textContent = formatDate(m.due_date);
+        row.insertCell(10).textContent = m.receiver || "-";
+        row.insertCell(11).textContent = m.receiver_name || "-";
+        row.insertCell(12).textContent = m.receipt_number || "-";
+        row.insertCell(13).textContent = m.serial_usage || "-";
+        const noteCell = row.insertCell(14);
         if (m.correction_of) {
           noteCell.textContent = `${m.note || "-"} (Correction of #${m.correction_of})`;
         } else {
           noteCell.textContent = m.note || "-";
         }
       });
+      renderPaginationControls(data.length, page);
     } else {
-        tbody.innerHTML = `<tr><td colspan="13" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>${i18nText("noData", "No results found.")}</p></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="15" class="table-empty-state"><i style="font-size: 24px;">🔎</i><p>${i18nText("noData", "No results found.")}</p></td></tr>`;
+        const paginationContainer = document.getElementById("pagination-controls");
+        if (paginationContainer) paginationContainer.innerHTML = "";
     }
 }
 
+function renderPaginationControls(totalItems, currentPage) {
+  const container = document.getElementById("pagination-controls");
+  if (!container) return;
+  
+  const totalPages = Math.ceil(totalItems / movementsPerPage);
+  
+  if (totalPages <= 1) {
+    container.innerHTML = `<div style="color: var(--text-muted); font-size: 13px;">Showing ${totalItems} results</div>`;
+    return;
+  }
+  
+  const startItem = ((currentPage - 1) * movementsPerPage) + 1;
+  const endItem = Math.min(currentPage * movementsPerPage, totalItems);
+  
+  container.innerHTML = `
+    <div style="color: var(--text-muted); font-size: 13px;">
+      Showing ${startItem} to ${endItem} of ${totalItems} entries
+    </div>
+    <div style="display: flex; gap: 4px;">
+      <button class="btn btn-sm btn-outline" onclick="changeMovementsPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>Previous</button>
+      <div style="padding: 4px 12px; font-weight: bold; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 4px;">${currentPage} / ${totalPages}</div>
+      <button class="btn btn-sm btn-outline" onclick="changeMovementsPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+    </div>
+  `;
+}
+
+window.changeMovementsPage = function(newPage) {
+  displayMovements(currentFilteredMovements, newPage);
+};
+
 function filterMovements(term) {
+    const searchTerm = String(term || "").trim().toLowerCase();
+    if (!searchTerm) {
+        displayMovements(allMovements, 1);
+        return;
+    }
     const filtered = allMovements.filter(m => {
         const name = (m.part_name || "").toLowerCase();
         const no = (m.partType || m.part_no || "").toLowerCase();
-        return name.includes(term) || no.includes(term);
+        return name.includes(searchTerm) || no.includes(searchTerm);
     });
-    displayMovements(filtered);
+    displayMovements(filtered, 1);
 }
 
 async function correctMovement(movementId) {

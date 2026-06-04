@@ -177,4 +177,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
-This project is proprietary and developed by Watcharapong W. (IT Eng.) for Hana Microelectronics Public Co., Ltd.
+This project is proprietary and developed by Watcharapong W. (IT MN Eng.) for Hana Microelectronics Public Co., Ltd.

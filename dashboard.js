@@ -615,55 +615,73 @@ async function loadInsights(warehouseId) {
 
 async function exportInventory() {
   const warehouseId = document.getElementById("warehouse-filter")?.value || 'all';
+  const warehouseName = getSelectedWarehouseName() || "All_Warehouses";
   const token = localStorage.getItem("token");
-  const url = `/spareparts?warehouseId=${warehouseId}`;
+  
+  // Use the correct API endpoint
+  const url = warehouseId === 'all' ? '/spareparts' : `/spareparts?warehouseId=${warehouseId}`;
   
   try {
-    const response = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!response.ok) throw new Error("Export failed");
-    const data = await response.json();
-    const parts = Array.isArray(data) ? data : (data.parts || []);
+    const btn = document.querySelector('button[onclick="exportInventory()"]');
+    const originalText = btn ? btn.innerHTML : "📥 Export Inventory";
+    if (btn) btn.innerHTML = "⏳ Exporting...";
 
-    if (parts.length === 0) {
+    const parts = await fetchData(url, token);
+    
+    if (!parts || parts.length === 0) {
       if (typeof showToast === "function") showToast("No data to export", "warning");
+      else alert("No inventory data to export.");
+      if (btn) btn.innerHTML = originalText;
       return;
     }
 
-    const headers = ["Part No", "Name", "Description (Part Type)", "Quantity", "Unit", "Price", "Warehouse"];
+    const headers = ["Report Date", "Part No", "Part Name", "Type", "Remaining Qty", "Piece Stock", "Unit", "Location", "Price", "Total Value (THB)"];
+    
+    const now = new Date();
+    // Format date as DD/MM/YYYY
+    const reportDateStr = String(now.getDate()).padStart(2, '0') + "/" + String(now.getMonth() + 1).padStart(2, '0') + "/" + now.getFullYear();
+
     const csvRows = parts.map(p => {
       const escapeCsv = (val) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+      const totalValue = (Number(p.quantity || 0) * Number(p.price || 0));
       return [
+        escapeCsv(reportDateStr),
         escapeCsv(p.part_no),
         escapeCsv(p.name),
-        escapeCsv(p.description),
+        escapeCsv(p.type || p.description),
         escapeCsv(p.quantity),
+        escapeCsv(p.piece_stock),
         escapeCsv(p.unit_type || "PC"),
+        escapeCsv(p.location),
         escapeCsv(p.price || 0),
-        escapeCsv(p.warehouse_name || "-")
+        escapeCsv(totalValue)
       ].join(",");
     });
 
+    // Add BOM for Excel UTF-8 compatibility
     const csvContent = "\ufeff" + [headers.join(","), ...csvRows].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const downloadUrl = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = downloadUrl;
     
-    const now = new Date();
-    const dateStr = now.getFullYear() + "_" + (now.getMonth() + 1) + "_" + now.getDate();
-    const timeStr = now.getHours() + "h" + now.getMinutes() + "m";
-    a.download = `inventory_${warehouseId}_${dateStr}_${timeStr}.csv`;
+    const dateStr = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, '0') + "-" + String(now.getDate()).padStart(2, '0');
+    a.download = `Inventory_Report_${warehouseName.replace(/\s+/g, '_')}_${dateStr}.csv`;
     
     document.body.appendChild(a);
     a.click();
     a.remove();
+    
+    if (btn) btn.innerHTML = originalText;
   } catch (err) {
     console.error("Export error:", err);
     if (typeof showToast === "function") showToast("Export failed: " + err.message, "error");
+    else alert("Failed to export inventory data.");
+    const btn = document.querySelector('button[onclick="exportInventory()"]');
+    if (btn) btn.innerHTML = "📥 Export Inventory";
   }
 }
+
 
 // Handle language change re-render
 window.addEventListener('languageChanged', () => {

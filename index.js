@@ -34,6 +34,10 @@ const app = express();
 
 // ABSOLUTE TOP: Diagnostic Route
 app.get("/public-ping", (req, res) => res.json({ message: "pong (absolute top)", version: "2.3" }));
+app.get("/force-restart", (req, res) => {
+  res.send("Restarting...");
+  setTimeout(() => process.exit(1), 100);
+});
 // ----------------------------
 const PORT = Number(process.env.PORT || 5000);
 const NODE_ENV = String(process.env.NODE_ENV || "development").toLowerCase();
@@ -136,6 +140,15 @@ function requireRole(roles = []) {
 }
 
 const db = createDatabase(); // Initialize DB early
+
+// --- ONE TIME FIX: FIX HISTORY UNIT DISPLAY ---
+try {
+  db.run("UPDATE stock_movements SET unit_type = 'PC' WHERE unit_type IN ('PAC', 'BOX') AND movement_type IN ('OUT', 'BORROW', 'RETURN')", function(err) {
+    if (err) console.error("History fix error:", err);
+    else if (this.changes > 0) console.log("Fixed history units to PC for", this.changes, "records");
+  });
+} catch(e) {}
+// ----------------------------------------------
 // --------------------------------------------------
 
 // ---------------------------
@@ -310,9 +323,9 @@ db.run(`CREATE TABLE IF NOT EXISTS system_config (
 
 // ฟังก์ชันสำหรับรัน Automation รายวัน (เช่น ส่ง Reminder ตอน 8 โมงเช้า)
 function runDailyAutomation() {
-  const checkInterval = 60 * 60 * 1000; // เช็คทุก 1 ชั่วโมง
+  const checkInterval = 15 * 60 * 1000; // เช็คทุก 15 นาที เพื่อไม่ให้พลาดช่วงเวลา
 
-  setInterval(() => {
+  const executeCheck = () => {
     const now = new Date();
     const currentHour = now.getHours();
     const todayStr = now.toISOString().split('T')[0];
@@ -323,15 +336,63 @@ function runDailyAutomation() {
         if (err) return console.error("Automation error:", err);
 
         if (!row || row.value !== todayStr) {
-          console.log(`[Automation] Running daily overdue reminders for ${todayStr}...`);
+          console.log(`[Automation] Running daily overdue reminders and database backups for ${todayStr}...`);
 
           triggerOverdueReminders();
+          
+          if (dbConfig.dbClient === 'sqlite') {
+              backupDatabase();
+          }
 
           db.run(sqlDialect.systemConfigUpsertSql, [todayStr]);
         }
       });
     }
-  }, checkInterval);
+  };
+
+  // เช็คทันทีที่เปิดเซิร์ฟเวอร์
+  executeCheck();
+
+  // แล้วตั้งเวลาเช็คเรื่อยๆ
+  setInterval(executeCheck, checkInterval);
+}
+
+function backupDatabase() {
+  const dbPath = path.join(__dirname, "sparepart.db");
+  const backupDir = path.join(__dirname, "backups");
+  
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+  }
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const backupFileName = `sparepart_backup_${todayStr}.db`;
+  const backupPath = path.join(backupDir, backupFileName);
+
+  if (fs.existsSync(dbPath)) {
+    fs.copyFile(dbPath, backupPath, (err) => {
+      if (err) {
+        console.error(`[Backup] Failed to create backup: ${err.message}`);
+      } else {
+        console.log(`[Backup] Database backed up successfully to ${backupPath}`);
+        
+        // Keep only last 7 days of backups
+        fs.readdir(backupDir, (err, files) => {
+          if (err) return;
+          const backupFiles = files.filter(f => f.startsWith('sparepart_backup_') && f.endsWith('.db')).sort();
+          if (backupFiles.length > 7) {
+            const filesToDelete = backupFiles.slice(0, backupFiles.length - 7);
+            filesToDelete.forEach(f => {
+              fs.unlink(path.join(backupDir, f), (unlinkErr) => {
+                if (unlinkErr) console.error(`[Backup] Failed to delete old backup ${f}:`, unlinkErr.message);
+                else console.log(`[Backup] Deleted old backup ${f}`);
+              });
+            });
+          }
+        });
+      }
+    });
+  }
 }
 
 async function triggerOverdueReminders() {
@@ -1557,6 +1618,11 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
       const usesPackUnit = isPackUnit(unitType);
       const requestedQty = Math.max(0, Number(quantity) || 0);
 
+      const reqUnitType = unit_type || partMeta.unit_type || "";
+      const requestedQtyInPieces = (isPackUnit(normalizeUnitType(reqUnitType)) && ["OUT", "BORROW", "RETURN"].includes(movement_type) && convInt > 1)
+        ? requestedQty * convInt
+        : requestedQty;
+
       if (!requestedQty) {
         return res.status(400).json({ error: "Invalid quantity" });
       }
@@ -1613,13 +1679,13 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
               piece_stock = piece_stock - ?,
               quantity = ((piece_stock - ? + ? - 1) / ?)
               WHERE id = ?`;
-            updateParams = [requestedQty, requestedQty, convInt, convInt, part_id];
+            updateParams = [requestedQtyInPieces, requestedQtyInPieces, convInt, convInt, part_id];
           } else if (movement_type === "RETURN") {
             updateSql = `UPDATE spare_parts SET
               piece_stock = piece_stock + ?,
               quantity = ((piece_stock + ? + ? - 1) / ?)
               WHERE id = ?`;
-            updateParams = [requestedQty, requestedQty, convInt, convInt, part_id];
+            updateParams = [requestedQtyInPieces, requestedQtyInPieces, convInt, convInt, part_id];
           } else {
             updateSql = "UPDATE spare_parts SET quantity = quantity - ?, piece_stock = MAX(0, piece_stock - (? * ?)) WHERE id = ?";
             updateParams = [requestedQty, requestedQty, convInt, part_id];
@@ -1636,9 +1702,7 @@ app.post("/stock-movements", authenticateToken, (req, res) => {
           );
         };
 
-        const movementUnit = unit_type || ((usesPackUnit && ["OUT", "BORROW", "RETURN"].includes(movement_type)) 
-          ? "PC" 
-          : (partMeta.unit_type || ""));
+        const movementUnit = unit_type || partMeta.unit_type || "";
 
         const finalizeMovement = (movementId, touchedSerialNos) => {
           const updateTotals = usesPackUnit ? updatePackTotals : updateSimpleTotals;
@@ -1722,14 +1786,14 @@ const allocatePackUsage = (movementId) => {
             (itemsErr, rows) => {
               if (itemsErr) return rollbackWith(500, itemsErr.message);
               const totalRemaining = rows.reduce((sum, row) => sum + (Number(row.remaining_qty) || 0), 0);
-              if (totalRemaining < requestedQty) {
+              if (totalRemaining < requestedQtyInPieces) {
                 const detail = selectedSerialIds.length > 0
-                  ? `Selected ${rows.length} SP no(s) have only ${totalRemaining} pieces, but ${requestedQty} requested`
-                  : `Only ${totalRemaining} pieces available, but ${requestedQty} requested`;
+                  ? `Selected ${rows.length} SP no(s) have only ${totalRemaining} pieces, but ${requestedQtyInPieces} requested`
+                  : `Only ${totalRemaining} pieces available, but ${requestedQtyInPieces} requested`;
                 return rollbackWith(400, `Not enough quantity in SP no list: ${detail}`);
               }
 
-              let remainingToTake = requestedQty;
+              let remainingToTake = requestedQtyInPieces;
               const touchedSerialNos = [];
 
               const consumeNext = (index) => {
@@ -1823,9 +1887,8 @@ const allocatePackUsage = (movementId) => {
             return callback(Number(price) || Number(partMeta.price || 0));
           }
           const applyPackRate = (boxPrice) => {
-            // For pack units (BOX/PAC) on OUT/BORROW/RETURN, quantity is in pieces/M.
-            // Store price per piece so that value = quantity × price is correct.
-            if (usesPackUnit && convInt > 1) {
+            // If movement was in PC, but part is a Pack, save the per-piece price
+            if (normalizeUnitType(movementUnit) === "PC" && usesPackUnit && convInt > 1) {
               return Math.round((Number(boxPrice) / convInt) * 10000) / 10000;
             }
             return Number(boxPrice);
