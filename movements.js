@@ -1660,7 +1660,7 @@ if (exportBtn) {
 
     const headers = [
       "Date", "Type", "Return Status", "Part Name", "Part Type", "Quantity", 
-      "Unit Price Used", "Warehouse", "Due Date", "Issuer", "Receiver", 
+      "Unit Price Used", "Total Price", "Warehouse", "Due Date", "Issuer", "Receiver", 
       "Request Number", "SP No Usage", "Note"
     ];
 
@@ -1673,6 +1673,8 @@ if (exportBtn) {
       const partType = m.description || m.part_no || "-";
       const qty = `${m.quantity} ${m.unit_type || ""}`.trim();
       const price = m.price || 0;
+      const quantityNum = Number(m.quantity || 0);
+      const totalPrice = price * quantityNum;
       const warehouse = m.department || "-";
       const dueDate = m.due_date ? new Date(m.due_date).toLocaleDateString() : "-";
       const issuer = m.receiver || "-";
@@ -1689,6 +1691,7 @@ if (exportBtn) {
         escapeCsv(partType),
         escapeCsv(qty),
         escapeCsv(price),
+        escapeCsv(totalPrice),
         escapeCsv(warehouse),
         escapeCsv(dueDate),
         escapeCsv(issuer),
